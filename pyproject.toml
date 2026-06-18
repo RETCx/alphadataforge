@@ -17,5 +17,11 @@ dependencies = [
     "scikit-learn"
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
 [project.urls]
 "Homepage" = "https://github.com/RETCx/alphadataforge"
+
