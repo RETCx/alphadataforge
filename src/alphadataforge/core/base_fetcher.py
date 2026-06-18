@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import pandas as pd
-from typing import Optional
+from typing import Optional, List, Dict  # Remember to import List and Dict
+import random as rd
 
 class BaseDataFetcher(ABC):
     """
@@ -17,15 +18,28 @@ class BaseDataFetcher(ABC):
         **kwargs
     ) -> pd.DataFrame:
         """
-        Fetches data and returns a pandas DataFrame.
-        
-        Parameters:
-        - symbol: Ticker or asset symbol (e.g., 'AAPL', 'BTC-USD')
-        - start_date: Start date (YYYY-MM-DD)
-        - end_date: End date (YYYY-MM-DD)
-        - kwargs: Additional parameters for specific APIs
-        
-        Returns:
-        - pd.DataFrame containing the historical data
+        Fetch data for a single symbol
+        (Every fetcher must implement its own data retrieval method in this function)
         """
         pass
+    
+    def fetch_multiple(
+        self, 
+        tickers: List[str], 
+        start_date: Optional[str] = None, 
+        end_date: Optional[str] = None,
+        **kwargs
+    ) -> Dict[str, pd.DataFrame]:
+        """
+        Fetch data for multiple tickers simultaneously, returning a dictionary of DataFrames
+        """
+        results = {}
+        for ticker in tickers:
+            print(f"Fetching {ticker}...")
+            # It calls the child class's fetch_data (e.g., yfinance) for each ticker
+            results[ticker] = self.fetch_data(ticker, start_date, end_date, **kwargs)
+            
+            # add random delay to avoid API rate limits
+            time.sleep(rd.uniform(0.5,1))
+            
+        return results
