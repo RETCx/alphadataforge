@@ -2,6 +2,7 @@ import pandas as pd
 from typing import Optional, List, Dict, Any
 from tiingo import TiingoClient
 from ..core.base_fetcher import BaseDataFetcher
+from ..config.settings import config
 
 
 class TiingoFetcher(BaseDataFetcher):
@@ -14,11 +15,13 @@ class TiingoFetcher(BaseDataFetcher):
     """
 
     def __init__(self):
+        self.api_key = config.TIINGO_API_KEY
         # TiingoClient automatically reads TIINGO_API_KEY from environment
         self.client = TiingoClient({'session': True})
+        
 
     # ------------------------------------------------------------------
-    # [Contract] Required by BaseDataFetcher — fetches PRICE for 1 symbol
+    # Required by BaseDataFetcher — fetches PRICE for 1 symbol
     # ------------------------------------------------------------------
     def fetch_single(
         self,
@@ -49,7 +52,7 @@ class TiingoFetcher(BaseDataFetcher):
         return df
 
     # ------------------------------------------------------------------
-    # [Bonus] Fetch price for multiple symbols at once
+    # Fetch price for multiple symbols at once
     # ------------------------------------------------------------------
     def fetch_multiple(
         self,
@@ -81,7 +84,7 @@ class TiingoFetcher(BaseDataFetcher):
                 for sym in symbols if sym in combined.columns}
 
     # ------------------------------------------------------------------
-    # [Extra] News — curated financial news with ticker + tag filtering
+    #   News — curated financial news with ticker + tag filtering
     # ------------------------------------------------------------------
     def fetch_news(
         self,
@@ -117,50 +120,50 @@ class TiingoFetcher(BaseDataFetcher):
         )
         return pd.DataFrame(articles)
 
-    # ------------------------------------------------------------------
-    # [Extra] Fundamentals — daily (marketCap etc.) and quarterly statements
-    # ------------------------------------------------------------------
-    def fetch_fundamentals_daily(
-        self,
-        symbol: str,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-    ) -> pd.DataFrame:
-        """
-        Fetch daily-updated fundamental metrics (e.g. marketCap, EV).
-        NOTE: Requires Tiingo paid plan.
-        """
-        print(f"[TiingoFetcher] Fetching daily fundamentals for {symbol}...")
-        data = self.client.get_fundamentals_daily(
-            symbol, startDate=start_date, endDate=end_date
-        )
-        return pd.DataFrame(data)
+    # # ------------------------------------------------------------------
+    # # Fundamentals — daily (marketCap etc.) and quarterly statements
+    # # ------------------------------------------------------------------
+    # def fetch_fundamentals_daily(
+    #     self,
+    #     symbol: str,
+    #     start_date: Optional[str] = None,
+    #     end_date: Optional[str] = None,
+    # ) -> pd.DataFrame:
+    #     """
+    #     Fetch daily-updated fundamental metrics (e.g. marketCap, EV).
+    #     NOTE: Requires Tiingo paid plan.
+    #     """
+    #     print(f"[TiingoFetcher] Fetching daily fundamentals for {symbol}...")
+    #     data = self.client.get_fundamentals_daily(
+    #         symbol, startDate=start_date, endDate=end_date
+    #     )
+    #     return pd.DataFrame(data)
 
-    def fetch_fundamentals_statements(
-        self,
-        symbol: str,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        as_reported: bool = False,
-    ) -> pd.DataFrame:
-        """
-        Fetch quarterly financial statements (income, balance sheet, cash flow).
-        NOTE: Requires Tiingo paid plan.
+    # def fetch_fundamentals_statements(
+    #     self,
+    #     symbol: str,
+    #     start_date: Optional[str] = None,
+    #     end_date: Optional[str] = None,
+    #     as_reported: bool = False,
+    # ) -> pd.DataFrame:
+    #     """
+    #     Fetch quarterly financial statements (income, balance sheet, cash flow).
+    #     NOTE: Requires Tiingo paid plan.
 
-        Args:
-            as_reported: If True, returns raw SEC-reported data (no corrections).
-        """
-        print(f"[TiingoFetcher] Fetching quarterly statements for {symbol}...")
-        data = self.client.get_fundamentals_statements(
-            symbol,
-            startDate=start_date,
-            endDate=end_date,
-            asReported=as_reported,
-        )
-        return pd.DataFrame(data)
+    #     Args:
+    #         as_reported: If True, returns raw SEC-reported data (no corrections).
+    #     """
+    #     print(f"[TiingoFetcher] Fetching quarterly statements for {symbol}...")
+    #     data = self.client.get_fundamentals_statements(
+    #         symbol,
+    #         startDate=start_date,
+    #         endDate=end_date,
+    #         asReported=as_reported,
+    #     )
+    #     return pd.DataFrame(data)
 
     # ------------------------------------------------------------------
-    # [Extra] Crypto — historical OHLCV for crypto pairs
+    #   Crypto — historical OHLCV for crypto pairs
     # ------------------------------------------------------------------
     def fetch_crypto(
         self,
