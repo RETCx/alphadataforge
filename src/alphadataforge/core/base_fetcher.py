@@ -10,7 +10,7 @@ class BaseDataFetcher(ABC):
     """
     
     @abstractmethod
-    def fetch_data(
+    def fetch_single(
         self, 
         symbol: str, 
         start_date: Optional[str] = None, 
@@ -25,7 +25,7 @@ class BaseDataFetcher(ABC):
     
     def fetch_multiple(
         self, 
-        tickers: List[str], 
+        symbols: List[str], 
         start_date: Optional[str] = None, 
         end_date: Optional[str] = None,
         **kwargs
@@ -34,10 +34,10 @@ class BaseDataFetcher(ABC):
         Fetch data for multiple tickers simultaneously, returning a dictionary of DataFrames
         """
         results = {}
-        for ticker in tickers:
-            print(f"Fetching {ticker}...")
-            # It calls the child class's fetch_data (e.g., yfinance) for each ticker
-            results[ticker] = self.fetch_data(ticker, start_date, end_date, **kwargs)
+        for symbol in symbols:
+            print(f"Fetching {symbol}...")
+            # It calls the child class's fetch_single (e.g., yfinance) for each ticker
+            results[symbol] = self.fetch_single(symbol, start_date, end_date, **kwargs)
             
             # add random delay to avoid API rate limits
             time.sleep(rd.uniform(0.5,1))
