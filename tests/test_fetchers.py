@@ -1,11 +1,22 @@
 import pytest
 import pandas as pd
-from alphadataforge.data_fetch.yfinance_fetcher import YFinanceFetcher
+import os
+from alphadataforge.providers.yfinance_fetcher import YFinanceFetcher
+from alphadataforge.providers.tiingo_fetcher import TiingoFetcher
+from alphadataforge.data.price import Price
+from alphadataforge.config.settings import config
 
 @pytest.fixture
 def yf_fetcher():
     """Provides a YFinanceFetcher instance for tests."""
     return YFinanceFetcher()
+
+@pytest.fixture
+def tiingo_fetcher():
+    """Provides a TiingoFetcher instance for tests. Skips if no API key."""
+    if not config.TIINGO_API_KEY:
+        pytest.skip("TIINGO_API_KEY not set. Skipping Tiingo tests.")
+    return TiingoFetcher()
 
 def test_fetch_single_basic(yf_fetcher):
     """Test fetching a single symbol using default parameters."""
@@ -18,15 +29,12 @@ def test_fetch_single_basic(yf_fetcher):
 
 def test_fetch_single_intraday_with_kwargs(yf_fetcher):
     """Test fetching single symbol with intraday interval and extra kwargs."""
-    # Note: intraday data is restricted to last 730 days for 1h, so using a recent date is better,
-    # but since yf might ignore start/end if too old for intraday or return empty,
-    # let's test with period='5d' using **kwargs to bypass start/end
     df = yf_fetcher.fetch_single("MSFT", interval="1h", period="5d", auto_adjust=False)
     
     assert isinstance(df, pd.DataFrame)
     assert not df.empty
     assert 'Close' in df.columns
-    assert 'Adj Close' in df.columns  # because auto_adjust=False, we should see Adj Close
+    assert 'Adj Close' in df.columns  # auto_adjust=False means Adj Close should be present
 
 def test_fetch_multiple_basic(yf_fetcher):
     """Test fetching multiple symbols at once."""
@@ -41,33 +49,102 @@ def test_fetch_multiple_basic(yf_fetcher):
         assert not df.empty
         assert 'Close' in df.columns
 
-def test_fetch_multiple_single_symbol_fallback(yf_fetcher):
-    """Test fetch_multiple but with only one symbol in the list."""
-    symbols = ["TSLA"]
-    data_dict = yf_fetcher.fetch_multiple(symbols, start_date="2023-01-01", end_date="2023-01-05")
+def test_price_unified_api_normal():
+    """Test unified Facade API with default provider (yfinance)."""
+    df_normal = Price.get("AAPL", start_date="2023-01-01", end_date="2023-01-05")
+    assert isinstance(df_normal, pd.DataFrame)
+    assert not df_normal.empty
+    assert 'Close' in df_normal.columns
+
+def test_price_unified_api_multiple():
+    """Test unified Facade API fetching multiple symbols at once."""
+    symbols = ["AAPL", "GOOGL"]
+    data_dict = Price.get(symbols, start_date="2023-01-01", end_date="2023-01-05")
     
-    assert isinstance(data_dict, dict)
-    assert "TSLA" in data_dict
-    assert not data_dict["TSLA"].empty
-
-def test_fetch_multiple_index(yf_fetcher):
-    """Test fetching multiple symbols with different index types (QQQ, ^VIX)"""
-    symbols = ["QQQ", "^VIX"]
-    data_dict = yf_fetcher.fetch_multiple(symbols, start_date="2023-01-01", end_date="2023-01-05")
+    assert isinstance(data_dict, dict), "Must return a dictionary when passing a list of symbols"
+    assert set(data_dict.keys()) == set(symbols), "Dictionary must contain all requested symbols"
     
+    for symbol, df in data_dict.items():
+        assert isinstance(df, pd.DataFrame)
+        assert not df.empty
+        assert 'Close' in df.columns
+
+def test_price_unified_api_advanced():
+    """Test Facade API with advanced provider_params (weekly interval)."""
+    df_advanced = Price.get("AAPL", provider="yfinance", provider_params={"interval": "1wk", "period": "1mo"})
+    assert isinstance(df_advanced, pd.DataFrame)
+    assert not df_advanced.empty
+    assert 'Close' in df_advanced.columns
+
+def test_fetch_news(yf_fetcher):
+    """Test fetching news articles for a ticker."""
+    df = yf_fetcher.fetch_news("AAPL", count=5)
+    assert isinstance(df, pd.DataFrame)
+    assert not df.empty
+    assert 'title' in df.columns
+
+def test_fetch_info(yf_fetcher):
+    """Test fetching ticker metadata and fundamental info dict."""
+    info = yf_fetcher.fetch_info("AAPL")
+    assert isinstance(info, dict)
+    assert 'marketCap' in info
+    assert 'sector' in info
+
+def test_fetch_financials_income(yf_fetcher):
+    """Test fetching annual income statement."""
+    df = yf_fetcher.fetch_financials("AAPL", statement="income")
+    assert isinstance(df, pd.DataFrame)
+    assert not df.empty
+
+def test_fetch_crypto(yf_fetcher):
+    """Test fetching crypto price via yfinance (BTC-USD)."""
+    data = yf_fetcher.fetch_crypto(["BTC-USD"], start_date="2023-01-01", end_date="2023-01-05")
+    assert isinstance(data, dict)
+    assert "BTC-USD" in data
+    assert not data["BTC-USD"].empty
+
+def test_fetch_forex(yf_fetcher):
+    """Test fetching forex rate data (EUR/USD)."""
+    data = yf_fetcher.fetch_forex(["EURUSD=X"], start_date="2023-01-01", end_date="2023-01-05")
+    assert isinstance(data, dict)
+    assert "EURUSD=X" in data
+    assert not data["EURUSD=X"].empty
+
+# -------------------------------------------------------------------
+# TiingoFetcher Tests
+# -------------------------------------------------------------------
+
+def test_tiingo_fetch_single(tiingo_fetcher):
+    """Test fetching a single symbol using Tiingo."""
+    df = tiingo_fetcher.fetch_single("AAPL", start_date="2023-01-01", end_date="2023-01-05")
+    assert isinstance(df, pd.DataFrame)
+    assert not df.empty
+    assert 'close' in df.columns or 'adjClose' in df.columns
+
+def test_tiingo_fetch_multiple(tiingo_fetcher):
+    """Test fetching multiple symbols at once using Tiingo."""
+    symbols = ["AAPL", "GOOGL"]
+    data_dict = tiingo_fetcher.fetch_multiple(symbols, start_date="2023-01-01", end_date="2023-01-05")
     assert isinstance(data_dict, dict)
-    for symbol in symbols:
-        assert symbol in data_dict
-        assert not data_dict[symbol].empty
-        assert 'Close' in data_dict[symbol].columns
+    assert set(data_dict.keys()) == set(symbols)
+    
+    for symbol, df in data_dict.items():
+        assert isinstance(df, pd.DataFrame)
+        assert not df.empty
 
+def test_tiingo_fetch_crypto(tiingo_fetcher):
+    """Test fetching crypto price via Tiingo (BTCUSD)."""
+    data = tiingo_fetcher.fetch_crypto(["BTCUSD"], start_date="2023-01-01", end_date="2023-01-05")
+    assert isinstance(data, dict)
+    # Tiingo API returns crypto tickers in lowercase
+    assert "btcusd" in data
+    assert not data["btcusd"].empty
 
-from alphadataforge.data.price import Price
-
-# Level 1: ดึงแบบคนทั่วไป
-df_normal = Price.get("AAPL")
-
-# Level 3: ดึงแบบคนเถื่อน (ส่ง params เฉพาะของ YFinance ไป)
-df_advanced = Price.get("AAPL", provider="yfinance", provider_params={"interval": "1wk"})
-
-print(df_advanced.head())
+def test_price_tiingo_provider():
+    """Test Facade API with tiingo provider."""
+    if not config.TIINGO_API_KEY:
+        pytest.skip("TIINGO_API_KEY not set. Skipping Tiingo Facade test.")
+    
+    df = Price.get("AAPL", provider="tiingo", start_date="2023-01-01", end_date="2023-01-05")
+    assert isinstance(df, pd.DataFrame)
+    assert not df.empty
