@@ -7,7 +7,7 @@ import time
 class BaseDataFetcher(ABC):
     """
     Abstract Base Class for all data fetchers.
-    Acts as a contract ensuring all fetchers implement the fetch_data method.
+    Acts as a contract ensuring all fetchers implement the fetch_single method.
     """
     
     @abstractmethod
@@ -19,8 +19,8 @@ class BaseDataFetcher(ABC):
         **kwargs
     ) -> pd.DataFrame:
         """
-        Fetch data for a single symbol
-        (Every fetcher must implement its own data retrieval method in this function)
+        Fetch data for a single symbol.
+        Every provider must implement this method.
         """
         pass
     
