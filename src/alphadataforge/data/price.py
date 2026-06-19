@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union, List
 import pandas as pd
 
 # ดึงผู้ปฏิบัติงาน (Providers) ที่อยู่หลังบ้านมาเตรียมไว้
@@ -13,12 +13,12 @@ class Price:
     
     @staticmethod
     def get(
-        symbol: str, 
+        symbols: Union[str, List[str]], 
         start_date: Optional[str] = None, 
         end_date: Optional[str] = None,
         provider: str = "yfinance",    # Which provider to use (default: yfinance)
         provider_params: Optional[Dict[str, Any]] = None  # Extra provider-specific params
-    ) -> pd.DataFrame:
+    ) -> Union[pd.DataFrame, Dict[str, pd.DataFrame]]:
         
         # Prevent error if no params are passed
         provider_params = provider_params or {}
@@ -31,8 +31,11 @@ class Price:
         else:
             raise ValueError(f"Unsupported provider: '{provider}'. Choose 'yfinance' or 'tiingo'.")
             
-        # 2. Fetch the data, forwarding any extra params through **provider_params
-        df = fetcher.fetch_single(symbol, start_date, end_date, **provider_params)
+        # 2. fetch price data (check whether list or string)
+        if isinstance(symbols, list):
+            result = fetcher.fetch_multiple(symbols, start_date, end_date, **provider_params)
+        else:
+            result = fetcher.fetch_single(symbols, start_date, end_date, **provider_params)
         
         # 3. Return to caller
-        return df
+        return result
