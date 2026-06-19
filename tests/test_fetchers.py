@@ -60,3 +60,14 @@ def test_fetch_multiple_index(yf_fetcher):
         assert symbol in data_dict
         assert not data_dict[symbol].empty
         assert 'Close' in data_dict[symbol].columns
+
+
+from alphadataforge.data.price import Price
+
+# Level 1: ดึงแบบคนทั่วไป
+df_normal = Price.get("AAPL")
+
+# Level 3: ดึงแบบคนเถื่อน (ส่ง params เฉพาะของ YFinance ไป)
+df_advanced = Price.get("AAPL", provider="yfinance", provider_params={"interval": "1wk"})
+
+print(df_advanced.head())

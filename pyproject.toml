@@ -12,6 +12,7 @@ dependencies = [
     "pandas",
     "numpy",
     "yfinance",
+    "tiingo",
     "google-cloud-bigquery",
     "requests",
     "scikit-learn"

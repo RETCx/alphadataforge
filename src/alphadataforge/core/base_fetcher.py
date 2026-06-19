@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 import pandas as pd
 from typing import Optional, List, Dict  # Remember to import List and Dict
 import random as rd
+import time
 
 class BaseDataFetcher(ABC):
     """
