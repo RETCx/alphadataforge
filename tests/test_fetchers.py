@@ -119,7 +119,7 @@ def test_tiingo_fetch_single(tiingo_fetcher):
     df = tiingo_fetcher.fetch_single("AAPL", start_date="2023-01-01", end_date="2023-01-05")
     assert isinstance(df, pd.DataFrame)
     assert not df.empty
-    assert 'close' in df.columns or 'adjClose' in df.columns
+    assert 'Close' in df.columns or 'Adj Close' in df.columns
 
 def test_tiingo_fetch_multiple(tiingo_fetcher):
     """Test fetching multiple symbols at once using Tiingo."""

@@ -4,6 +4,7 @@ import pandas as pd
 # ดึงผู้ปฏิบัติงาน (Providers) ที่อยู่หลังบ้านมาเตรียมไว้
 from ..providers.yfinance_fetcher import YFinanceFetcher
 from ..providers.tiingo_fetcher import TiingoFetcher
+from ..providers.alphavantage_fetcher import AlphaVantageFetcher
 
 class Price:
     """
@@ -28,8 +29,10 @@ class Price:
             fetcher = YFinanceFetcher()
         elif provider == "tiingo":
             fetcher = TiingoFetcher()
+        elif provider == "alphavantage":
+            fetcher = AlphaVantageFetcher()
         else:
-            raise ValueError(f"Unsupported provider: '{provider}'. Choose 'yfinance' or 'tiingo'.")
+            raise ValueError(f"Unsupported provider: '{provider}'. Choose 'yfinance', 'tiingo', or 'alphavantage'.")
             
         # 2. fetch price data (check whether list or string)
         if isinstance(symbols, list):
