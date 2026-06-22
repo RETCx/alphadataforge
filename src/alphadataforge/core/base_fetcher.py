@@ -4,6 +4,7 @@ from typing import Optional, List, Dict
 import random as rd
 import time
 from datetime import datetime
+import requests
 
 class BaseDataFetcher(ABC):
     """
@@ -43,6 +44,14 @@ class BaseDataFetcher(ABC):
         
         if start and end and start > end:
             raise ValueError("start_date cannot be after end_date.")
+            
+    def _make_http_request(self, url: str, params: Optional[dict] = None, headers: Optional[dict] = None) -> dict:
+        """
+        Generic HTTP GET request helper for providers that don't have a dedicated Python client.
+        """
+        response = requests.get(url, params=params, headers=headers)
+        response.raise_for_status()
+        return response.json()
     
     def _normalize_ohlcv(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -55,6 +64,11 @@ class BaseDataFetcher(ABC):
         # If all values are NaN (e.g. yfinance returning NaNs for invalid tickers in batch), return empty
         if df.isna().all().all():
             return pd.DataFrame()
+
+        # Flatten MultiIndex columns (e.g., from new yfinance versions returning Price/Ticker)
+        if isinstance(df.columns, pd.MultiIndex):
+            # We assume level 0 is the metric (Close, High, etc.) and level 1 is the ticker
+            df.columns = df.columns.get_level_values(0)
 
         # Title case mapping for common variants
         col_mapping = {
@@ -73,12 +87,13 @@ class BaseDataFetcher(ABC):
         }
         df = df.rename(columns=col_mapping)
         
-        # Ensure index is datetime
+        # Ensure index is datetime and named 'Date'
         if not isinstance(df.index, pd.DatetimeIndex):
             try:
                 df.index = pd.to_datetime(df.index)
             except Exception:
                 pass
+        df.index.name = "Date"
                 
         return df
     
