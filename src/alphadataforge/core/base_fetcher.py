@@ -1,8 +1,9 @@
 from abc import ABC, abstractmethod
 import pandas as pd
-from typing import Optional, List, Dict  # Remember to import List and Dict
+from typing import Optional, List, Dict
 import random as rd
 import time
+from datetime import datetime
 
 class BaseDataFetcher(ABC):
     """
@@ -23,6 +24,63 @@ class BaseDataFetcher(ABC):
         Every provider must implement this method.
         """
         pass
+    
+    def _validate_inputs(self, symbol: str, start_date: Optional[str] = None, end_date: Optional[str] = None):
+        """Validates standard inputs before fetching."""
+        if not symbol or not isinstance(symbol, str) or symbol.strip() == "":
+            raise ValueError("Symbol must be a non-empty string.")
+        
+        def validate_date(date_str, name):
+            if date_str:
+                try:
+                    return datetime.strptime(date_str, "%Y-%m-%d")
+                except ValueError:
+                    raise ValueError("Date format must be YYYY-MM-DD.")
+            return None
+            
+        start = validate_date(start_date, "start_date")
+        end = validate_date(end_date, "end_date")
+        
+        if start and end and start > end:
+            raise ValueError("start_date cannot be after end_date.")
+    
+    def _normalize_ohlcv(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Standardizes the DataFrame columns to Title Case (Open, High, Low, Close, Volume, Adj Close)
+        and ensures the index is a DatetimeIndex.
+        """
+        if df.empty:
+            return pd.DataFrame()
+            
+        # If all values are NaN (e.g. yfinance returning NaNs for invalid tickers in batch), return empty
+        if df.isna().all().all():
+            return pd.DataFrame()
+
+        # Title case mapping for common variants
+        col_mapping = {
+            'open': 'Open',
+            'high': 'High',
+            'low': 'Low',
+            'close': 'Close',
+            'volume': 'Volume',
+            'adjclose': 'Adj Close',
+            'adj_close': 'Adj Close',
+            'adjClose': 'Adj Close',
+            'adjOpen': 'Adj Open',
+            'adjHigh': 'Adj High',
+            'adjLow': 'Adj Low',
+            'adjVolume': 'Adj Volume',
+        }
+        df = df.rename(columns=col_mapping)
+        
+        # Ensure index is datetime
+        if not isinstance(df.index, pd.DatetimeIndex):
+            try:
+                df.index = pd.to_datetime(df.index)
+            except Exception:
+                pass
+                
+        return df
     
     def fetch_multiple(
         self, 

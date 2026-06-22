@@ -37,15 +37,22 @@ class YFinanceFetcher(BaseDataFetcher):
             **kwargs:   Any extra yf.download() params (e.g. auto_adjust=False)
         """
         print(f"[YFinanceFetcher] Fetching price for {symbol} ({interval})...")
-        df = yf.download(
-            tickers=symbol,
-            start=start_date,
-            end=end_date,
-            interval=interval,
-            progress=False,
-            **kwargs
-        )
-        return df
+        self._validate_inputs(symbol, start_date, end_date)
+        
+        try:
+            df = yf.download(
+                tickers=symbol,
+                start=start_date,
+                end=end_date,
+                interval=interval,
+                progress=False,
+                **kwargs
+            )
+        except Exception as e:
+            print(f"[YFinanceFetcher] Error fetching {symbol}: {e}")
+            df = pd.DataFrame()
+            
+        return self._normalize_ohlcv(df)
 
     # ------------------------------------------------------------------
     # Fetch price for multiple symbols at once (batch download)
@@ -65,19 +72,29 @@ class YFinanceFetcher(BaseDataFetcher):
         Returns: {symbol: DataFrame}
         """
         print(f"[YFinanceFetcher] Batch downloading {len(symbols)} symbols...")
+        # Add basic validation for empty list
+        if not symbols:
+            return {}
+            
         kwargs['group_by'] = 'ticker'
-        df = yf.download(
-            symbols,
-            start=start_date,
-            end=end_date,
-            interval=interval,
-            progress=False,
-            **kwargs
-        )
+        try:
+            df = yf.download(
+                symbols,
+                start=start_date,
+                end=end_date,
+                interval=interval,
+                progress=False,
+                **kwargs
+            )
+        except Exception as e:
+            print(f"[YFinanceFetcher] Error batch fetching: {e}")
+            return {sym: pd.DataFrame() for sym in symbols}
+            
         # Single symbol: yfinance doesn't create a MultiIndex, return directly
         if len(symbols) == 1:
-            return {symbols[0]: df}
-        return {symbol: df[symbol] for symbol in symbols}
+            return {symbols[0]: self._normalize_ohlcv(df)}
+            
+        return {symbol: self._normalize_ohlcv(df[symbol]) for symbol in symbols if symbol in df.columns}
 
     # ------------------------------------------------------------------
     # News — recent news articles for a given ticker

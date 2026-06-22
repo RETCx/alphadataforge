@@ -42,14 +42,21 @@ class TiingoFetcher(BaseDataFetcher):
             **kwargs:   Any extra params forwarded to TiingoClient.get_dataframe()
         """
         print(f"[TiingoFetcher] Fetching price for {symbol} ({frequency})...")
-        df = self.client.get_dataframe(
-            symbol,
-            startDate=start_date,
-            endDate=end_date,
-            frequency=frequency,
-            **kwargs
-        )
-        return df
+        self._validate_inputs(symbol, start_date, end_date)
+        
+        try:
+            df = self.client.get_dataframe(
+                tickers=symbol,
+                startDate=start_date,
+                endDate=end_date,
+                frequency=frequency,
+                **kwargs
+            )
+        except Exception as e:
+            print(f"[TiingoFetcher] Error fetching {symbol}: {e}")
+            df = pd.DataFrame()
+            
+        return self._normalize_ohlcv(df)
 
     # ------------------------------------------------------------------
     # Fetch price for multiple symbols at once
@@ -71,16 +78,24 @@ class TiingoFetcher(BaseDataFetcher):
         Returns: {symbol: DataFrame}
         """
         print(f"[TiingoFetcher] Batch fetching {len(symbols)} symbols...")
-        combined: pd.DataFrame = self.client.get_dataframe(
-            symbols,
-            startDate=start_date,
-            endDate=end_date,
-            frequency=frequency,
-            metric_name=metric_name,
-            **kwargs
-        )
+        if not symbols:
+            return {}
+            
+        try:
+            combined: pd.DataFrame = self.client.get_dataframe(
+                symbols,
+                startDate=start_date,
+                endDate=end_date,
+                frequency=frequency,
+                metric_name=metric_name,
+                **kwargs
+            )
+        except Exception as e:
+            print(f"[TiingoFetcher] Error batch fetching: {e}")
+            return {sym: pd.DataFrame() for sym in symbols}
+            
         # When passing a list, tiingo returns a DataFrame with symbol columns
-        return {sym: combined[[sym]].rename(columns={sym: metric_name})
+        return {sym: self._normalize_ohlcv(combined[[sym]].rename(columns={sym: metric_name}))
                 for sym in symbols if sym in combined.columns}
 
     # ------------------------------------------------------------------
@@ -184,15 +199,24 @@ class TiingoFetcher(BaseDataFetcher):
         Returns: {ticker: DataFrame}
         """
         print(f"[TiingoFetcher] Fetching crypto: {tickers}...")
-        data = self.client.get_crypto_price_history(
-            tickers=tickers,
-            startDate=start_date,
-            endDate=end_date,
-            resampleFreq=resample_freq,
-        )
+        if not tickers:
+            return {}
+            
+        try:
+            data = self.client.get_crypto_price_history(
+                tickers=tickers,
+                startDate=start_date,
+                endDate=end_date,
+                resampleFreq=resample_freq,
+            )
+        except Exception as e:
+            print(f"[TiingoFetcher] Error fetching crypto: {e}")
+            return {ticker: pd.DataFrame() for ticker in tickers}
+            
         # Tiingo returns a list of dicts, each with 'ticker' and 'priceData'
         result = {}
         for item in data:
             ticker = item['ticker']
-            result[ticker] = pd.DataFrame(item['priceData'])
+            df = pd.DataFrame(item['priceData'])
+            result[ticker] = self._normalize_ohlcv(df)
         return result
