@@ -2,6 +2,9 @@ import yfinance as yf
 import pandas as pd
 from typing import Optional, List, Dict
 from ..core.base_fetcher import BaseDataFetcher
+from ..utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 class YFinanceFetcher(BaseDataFetcher):
@@ -35,23 +38,26 @@ class YFinanceFetcher(BaseDataFetcher):
                         "1d","5d","1wk","1mo","3mo"
                         Note: intraday intervals only available for last 60 days
             **kwargs:   Any extra yf.download() params (e.g. auto_adjust=False)
+        
+        Raises:
+            ValueError: If symbol or date inputs are invalid.
+            Exception: If yfinance download fails (network, invalid ticker, etc.)
         """
-        print(f"[YFinanceFetcher] Fetching price for {symbol} ({interval})...")
+        logger.info("Fetching price for %s (%s)...", symbol, interval)
         self._validate_inputs(symbol, start_date, end_date)
         
-        try:
-            df = yf.download(
-                tickers=symbol,
-                start=start_date,
-                end=end_date,
-                interval=interval,
-                progress=False,
-                **kwargs
-            )
-        except Exception as e:
-            print(f"[YFinanceFetcher] Error fetching {symbol}: {e}")
-            df = pd.DataFrame()
-            
+        df = yf.download(
+            tickers=symbol,
+            start=start_date,
+            end=end_date,
+            interval=interval,
+            progress=False,
+            **kwargs
+        )
+        
+        if df.empty:
+            logger.warning("yfinance returned empty DataFrame for %s. Check if the ticker is valid.", symbol)
+
         return self._normalize_ohlcv(df)
 
     # ------------------------------------------------------------------
@@ -68,33 +74,57 @@ class YFinanceFetcher(BaseDataFetcher):
         """
         Batch fetch OHLCV price data for multiple symbols in a single API call.
         More efficient than calling fetch_single() in a loop.
+        
+        Symbols that return empty or all-NaN data are logged and excluded.
 
-        Returns: {symbol: DataFrame}
+        Returns: {symbol: DataFrame}  (only successfully fetched symbols)
         """
-        print(f"[YFinanceFetcher] Batch downloading {len(symbols)} symbols...")
+        logger.info("Batch downloading %d symbols...", len(symbols))
         # Add basic validation for empty list
         if not symbols:
             return {}
             
         kwargs['group_by'] = 'ticker'
-        try:
-            df = yf.download(
-                symbols,
-                start=start_date,
-                end=end_date,
-                interval=interval,
-                progress=False,
-                **kwargs
-            )
-        except Exception as e:
-            print(f"[YFinanceFetcher] Error batch fetching: {e}")
-            return {sym: pd.DataFrame() for sym in symbols}
+        
+        df = yf.download(
+            symbols,
+            start=start_date,
+            end=end_date,
+            interval=interval,
+            progress=False,
+            **kwargs
+        )
             
         # Single symbol: yfinance doesn't create a MultiIndex, return directly
         if len(symbols) == 1:
-            return {symbols[0]: self._normalize_ohlcv(df)}
-            
-        return {symbol: self._normalize_ohlcv(df[symbol]) for symbol in symbols if symbol in df.columns}
+            normalized = self._normalize_ohlcv(df)
+            if normalized.empty:
+                logger.warning("Batch download returned no data for %s — excluding.", symbols[0])
+                return {}
+            return {symbols[0]: normalized}
+        
+        results = {}
+        for symbol in symbols:
+            if symbol not in df.columns:
+                logger.warning("Symbol %s not found in batch result — excluding.", symbol)
+                continue
+            normalized = self._normalize_ohlcv(df[symbol])
+            if normalized.empty:
+                logger.warning("Symbol %s returned empty data — excluding.", symbol)
+                continue
+            results[symbol] = normalized
+        
+        succeeded = len(results)
+        failed = len(symbols) - succeeded
+        if failed > 0:
+            logger.warning(
+                "Batch fetch finished: %d/%d succeeded, %d excluded.",
+                succeeded, len(symbols), failed,
+            )
+        else:
+            logger.info("Batch fetch finished: all %d symbols succeeded.", succeeded)
+
+        return results
 
     # ------------------------------------------------------------------
     # News — recent news articles for a given ticker
@@ -113,11 +143,15 @@ class YFinanceFetcher(BaseDataFetcher):
 
         Returns:
             DataFrame with columns: title, publisher, link, providerPublishTime, type
+        
+        Raises:
+            Exception: If yfinance ticker lookup fails.
         """
-        print(f"[YFinanceFetcher] Fetching news for {symbol}...")
+        logger.info("Fetching news for %s...", symbol)
         ticker = yf.Ticker(symbol)
         articles = ticker.news
         if not articles:
+            logger.warning("No news articles found for %s.", symbol)
             return pd.DataFrame()
         # Extract the 'content' dictionary which contains title, pubDate, etc.
         valid_articles = [a['content'] for a in articles[:count] if 'content' in a]
@@ -140,7 +174,7 @@ class YFinanceFetcher(BaseDataFetcher):
 
         Returns: dict (use pd.Series(result) to convert if needed)
         """
-        print(f"[YFinanceFetcher] Fetching info for {symbol}...")
+        logger.info("Fetching info for %s...", symbol)
         return yf.Ticker(symbol).info
 
     def fetch_financials(
@@ -158,9 +192,14 @@ class YFinanceFetcher(BaseDataFetcher):
             quarterly: If True, return quarterly data. Default is annual.
 
         Returns: DataFrame with financial line items as rows, periods as columns
+        
+        Raises:
+            ValueError: If statement type is not recognized.
         """
-        print(f"[YFinanceFetcher] Fetching {statement} statement for {symbol} "
-              f"({'quarterly' if quarterly else 'annual'})...")
+        logger.info(
+            "Fetching %s statement for %s (%s)...",
+            statement, symbol, 'quarterly' if quarterly else 'annual',
+        )
         ticker = yf.Ticker(symbol)
 
         if statement == "income":
@@ -195,7 +234,7 @@ class YFinanceFetcher(BaseDataFetcher):
 
         Returns: {symbol: DataFrame}
         """
-        print(f"[YFinanceFetcher] Fetching crypto: {symbols}...")
+        logger.info("Fetching crypto: %s...", symbols)
         return self.fetch_multiple(symbols, start_date, end_date, interval, **kwargs)
 
     def fetch_forex(
@@ -215,5 +254,5 @@ class YFinanceFetcher(BaseDataFetcher):
 
         Returns: {symbol: DataFrame}
         """
-        print(f"[YFinanceFetcher] Fetching forex: {pairs}...")
+        logger.info("Fetching forex: %s...", pairs)
         return self.fetch_multiple(pairs, start_date, end_date, interval, **kwargs)

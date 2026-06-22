@@ -4,7 +4,15 @@ from typing import Optional, List, Dict
 import random as rd
 import time
 from datetime import datetime
+
 import requests
+from requests.exceptions import RequestException, HTTPError, Timeout, ConnectionError
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
+
+from ..utils.logger import setup_logger
+
+logger = setup_logger(__name__)
+
 
 class BaseDataFetcher(ABC):
     """
@@ -36,7 +44,7 @@ class BaseDataFetcher(ABC):
                 try:
                     return datetime.strptime(date_str, "%Y-%m-%d")
                 except ValueError:
-                    raise ValueError("Date format must be YYYY-MM-DD.")
+                    raise ValueError(f"{name} format must be YYYY-MM-DD, got: '{date_str}'")
             return None
             
         start = validate_date(start_date, "start_date")
@@ -44,12 +52,27 @@ class BaseDataFetcher(ABC):
         
         if start and end and start > end:
             raise ValueError("start_date cannot be after end_date.")
-            
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type((RequestException, Timeout, ConnectionError)),
+        before_sleep=before_sleep_log(logger, log_level=20),  # 20 = INFO
+        reraise=True,
+    )
     def _make_http_request(self, url: str, params: Optional[dict] = None, headers: Optional[dict] = None) -> dict:
         """
-        Generic HTTP GET request helper for providers that don't have a dedicated Python client.
+        Generic HTTP GET request helper with automatic retry.
+        Retries up to 3 times with exponential backoff for transient network errors.
+        Raises HTTPError for non-retryable server errors (4xx).
         """
-        response = requests.get(url, params=params, headers=headers)
+        response = requests.get(url, params=params, headers=headers, timeout=30)
+
+        # Raise specific error for rate-limiting so tenacity can retry it
+        if response.status_code == 429:
+            logger.warning("Rate limited (HTTP 429). Retrying after backoff...")
+            raise RequestException(f"Rate limited by server (HTTP 429) for URL: {url}")
+
         response.raise_for_status()
         return response.json()
     
@@ -63,6 +86,7 @@ class BaseDataFetcher(ABC):
             
         # If all values are NaN (e.g. yfinance returning NaNs for invalid tickers in batch), return empty
         if df.isna().all().all():
+            logger.warning("All values are NaN after fetch — returning empty DataFrame.")
             return pd.DataFrame()
 
         # Flatten MultiIndex columns (e.g., from new yfinance versions returning Price/Ticker)
@@ -91,8 +115,12 @@ class BaseDataFetcher(ABC):
         if not isinstance(df.index, pd.DatetimeIndex):
             try:
                 df.index = pd.to_datetime(df.index)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(
+                    "Could not convert index to DatetimeIndex: %s. "
+                    "Falling back to pd.to_datetime with errors='coerce'.", e
+                )
+                df.index = pd.to_datetime(df.index, errors='coerce')
         df.index.name = "Date"
                 
         return df
@@ -105,15 +133,33 @@ class BaseDataFetcher(ABC):
         **kwargs
     ) -> Dict[str, pd.DataFrame]:
         """
-        Fetch data for multiple tickers simultaneously, returning a dictionary of DataFrames
+        Fetch data for multiple tickers, returning a dictionary of DataFrames.
+        Symbols that fail are logged and excluded from the result.
         """
+        if not symbols:
+            return {}
+
         results = {}
         for symbol in symbols:
-            print(f"Fetching {symbol}...")
-            # It calls the child class's fetch_single (e.g., yfinance) for each ticker
-            results[symbol] = self.fetch_single(symbol, start_date, end_date, **kwargs)
-            
+            try:
+                logger.info("Fetching %s...", symbol)
+                # It calls the child class's fetch_single (e.g., yfinance) for each ticker
+                results[symbol] = self.fetch_single(symbol, start_date, end_date, **kwargs)
+            except Exception as e:
+                logger.error("Failed to fetch %s — skipping. Error: %s", symbol, e)
+                # Do NOT include failed symbol in results
+
             # add random delay to avoid API rate limits
-            time.sleep(rd.uniform(0.5,1))
-            
+            time.sleep(rd.uniform(0.5, 1))
+
+        succeeded = len(results)
+        failed = len(symbols) - succeeded
+        if failed > 0:
+            logger.warning(
+                "fetch_multiple finished: %d/%d succeeded, %d failed.",
+                succeeded, len(symbols), failed,
+            )
+        else:
+            logger.info("fetch_multiple finished: all %d symbols succeeded.", succeeded)
+
         return results

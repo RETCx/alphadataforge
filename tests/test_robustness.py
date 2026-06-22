@@ -47,22 +47,26 @@ class TestValidation:
             yf_fetcher.fetch_single("AAPL", start_date="2023-01-05", end_date="2023-01-01")
             
     def test_invalid_date_format_raises_error(self, yf_fetcher):
-        with pytest.raises(ValueError, match="Date format must be YYYY-MM-DD"):
+        with pytest.raises(ValueError, match="start_date format must be YYYY-MM-DD"):
             yf_fetcher.fetch_single("AAPL", start_date="01-01-2023")
 
 class TestErrorHandling:
-    """3. Error Handling Test: Fetchers should return empty DataFrame on failure, not crash."""
+    """3. Error Handling Test: Validate new fail-fast & skip-on-failure behavior."""
     
     def test_invalid_ticker_returns_empty_df(self, yf_fetcher):
+        """yfinance returns empty DataFrame for unknown tickers (no exception raised)."""
         df = yf_fetcher.fetch_single("INVALID_TICKER_123")
         assert isinstance(df, pd.DataFrame)
         assert df.empty
 
-    def test_batch_invalid_ticker_returns_empty_df(self, yf_fetcher):
+    def test_batch_excludes_invalid_ticker(self, yf_fetcher):
+        """fetch_multiple should exclude failed symbols and only return successful ones."""
         data = yf_fetcher.fetch_multiple(["AAPL", "INVALID_TICKER_123"])
         assert isinstance(data, dict)
+        assert "AAPL" in data
         assert not data["AAPL"].empty
-        assert data["INVALID_TICKER_123"].empty
+        # Invalid ticker should be excluded (not present in results)
+        assert "INVALID_TICKER_123" not in data
         
 class TestProviderSelection:
     """4. Provider Selection Test: The Facade should route correctly."""

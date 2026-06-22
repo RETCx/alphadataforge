@@ -3,6 +3,9 @@ from typing import Optional, List, Dict, Any
 from tiingo import TiingoClient
 from ..core.base_fetcher import BaseDataFetcher
 from ..config.settings import config
+from ..utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 class TiingoFetcher(BaseDataFetcher):
@@ -16,6 +19,13 @@ class TiingoFetcher(BaseDataFetcher):
 
     def __init__(self):
         self.api_key = config.TIINGO_API_KEY
+
+        if not self.api_key:
+            raise ValueError(
+                "TIINGO_API_KEY is not set. "
+                "Please set it in your .env file or environment variables."
+            )
+
         # TiingoClient automatically reads TIINGO_API_KEY from environment
         self.client = TiingoClient({'session': True})
         
@@ -40,22 +50,25 @@ class TiingoFetcher(BaseDataFetcher):
             end_date:   "YYYY-MM-DD" (inclusive)
             frequency:  "daily" | "weekly" | "monthly" | "annually" | "1min" | "5min" etc.
             **kwargs:   Any extra params forwarded to TiingoClient.get_dataframe()
+        
+        Raises:
+            ValueError: If symbol or date inputs are invalid.
+            Exception: If Tiingo API call fails (network, auth, etc.)
         """
-        print(f"[TiingoFetcher] Fetching price for {symbol} ({frequency})...")
+        logger.info("Fetching price for %s (%s)...", symbol, frequency)
         self._validate_inputs(symbol, start_date, end_date)
         
-        try:
-            df = self.client.get_dataframe(
-                tickers=symbol,
-                startDate=start_date,
-                endDate=end_date,
-                frequency=frequency,
-                **kwargs
-            )
-        except Exception as e:
-            print(f"[TiingoFetcher] Error fetching {symbol}: {e}")
-            df = pd.DataFrame()
-            
+        df = self.client.get_dataframe(
+            tickers=symbol,
+            startDate=start_date,
+            endDate=end_date,
+            frequency=frequency,
+            **kwargs
+        )
+        
+        if df.empty:
+            logger.warning("Tiingo returned empty DataFrame for %s. Check if the ticker is valid.", symbol)
+
         return self._normalize_ohlcv(df)
 
     # ------------------------------------------------------------------
@@ -74,29 +87,47 @@ class TiingoFetcher(BaseDataFetcher):
         Fetch price data for multiple symbols.
         Uses tiingo's built-in batch method when metric_name is specified,
         which is more efficient than looping.
+        
+        Symbols that fail or return empty data are logged and excluded.
 
-        Returns: {symbol: DataFrame}
+        Returns: {symbol: DataFrame}  (only successfully fetched symbols)
         """
-        print(f"[TiingoFetcher] Batch fetching {len(symbols)} symbols...")
+        logger.info("Batch fetching %d symbols...", len(symbols))
         if not symbols:
             return {}
             
-        try:
-            combined: pd.DataFrame = self.client.get_dataframe(
-                symbols,
-                startDate=start_date,
-                endDate=end_date,
-                frequency=frequency,
-                metric_name=metric_name,
-                **kwargs
-            )
-        except Exception as e:
-            print(f"[TiingoFetcher] Error batch fetching: {e}")
-            return {sym: pd.DataFrame() for sym in symbols}
-            
+        combined: pd.DataFrame = self.client.get_dataframe(
+            symbols,
+            startDate=start_date,
+            endDate=end_date,
+            frequency=frequency,
+            metric_name=metric_name,
+            **kwargs
+        )
+        
         # When passing a list, tiingo returns a DataFrame with symbol columns
-        return {sym: self._normalize_ohlcv(combined[[sym]].rename(columns={sym: metric_name}))
-                for sym in symbols if sym in combined.columns}
+        results = {}
+        for sym in symbols:
+            if sym not in combined.columns:
+                logger.warning("Symbol %s not found in Tiingo batch result — excluding.", sym)
+                continue
+            normalized = self._normalize_ohlcv(combined[[sym]].rename(columns={sym: metric_name}))
+            if normalized.empty:
+                logger.warning("Symbol %s returned empty data — excluding.", sym)
+                continue
+            results[sym] = normalized
+
+        succeeded = len(results)
+        failed = len(symbols) - succeeded
+        if failed > 0:
+            logger.warning(
+                "Tiingo batch fetch finished: %d/%d succeeded, %d excluded.",
+                succeeded, len(symbols), failed,
+            )
+        else:
+            logger.info("Tiingo batch fetch finished: all %d symbols succeeded.", succeeded)
+
+        return results
 
     # ------------------------------------------------------------------
     #   News — curated financial news with ticker + tag filtering
@@ -123,8 +154,11 @@ class TiingoFetcher(BaseDataFetcher):
 
         Returns:
             DataFrame with columns: publishedDate, title, description, url, tickers, tags
+        
+        Raises:
+            Exception: If Tiingo news API call fails.
         """
-        print(f"[TiingoFetcher] Fetching news (tickers={tickers}, tags={tags})...")
+        logger.info("Fetching news (tickers=%s, tags=%s)...", tickers, tags)
         articles = self.client.get_news(
             tickers=tickers,
             tags=tags,
@@ -133,6 +167,10 @@ class TiingoFetcher(BaseDataFetcher):
             endDate=end_date,
             limit=limit,
         )
+
+        if not articles:
+            logger.warning("No news articles found for tickers=%s.", tickers)
+
         return pd.DataFrame(articles)
 
     # # ------------------------------------------------------------------
@@ -148,7 +186,7 @@ class TiingoFetcher(BaseDataFetcher):
     #     Fetch daily-updated fundamental metrics (e.g. marketCap, EV).
     #     NOTE: Requires Tiingo paid plan.
     #     """
-    #     print(f"[TiingoFetcher] Fetching daily fundamentals for {symbol}...")
+    #     logger.info("Fetching daily fundamentals for %s...", symbol)
     #     data = self.client.get_fundamentals_daily(
     #         symbol, startDate=start_date, endDate=end_date
     #     )
@@ -168,7 +206,7 @@ class TiingoFetcher(BaseDataFetcher):
     #     Args:
     #         as_reported: If True, returns raw SEC-reported data (no corrections).
     #     """
-    #     print(f"[TiingoFetcher] Fetching quarterly statements for {symbol}...")
+    #     logger.info("Fetching quarterly statements for %s...", symbol)
     #     data = self.client.get_fundamentals_statements(
     #         symbol,
     #         startDate=start_date,
@@ -196,27 +234,31 @@ class TiingoFetcher(BaseDataFetcher):
             end_date:      "YYYY-MM-DD"
             resample_freq: e.g. "1Day", "1Hour", "30Min"
 
-        Returns: {ticker: DataFrame}
+        Returns: {ticker: DataFrame}  (only successfully fetched tickers)
+        
+        Raises:
+            Exception: If Tiingo crypto API call fails.
         """
-        print(f"[TiingoFetcher] Fetching crypto: {tickers}...")
+        logger.info("Fetching crypto: %s...", tickers)
         if not tickers:
             return {}
             
-        try:
-            data = self.client.get_crypto_price_history(
-                tickers=tickers,
-                startDate=start_date,
-                endDate=end_date,
-                resampleFreq=resample_freq,
-            )
-        except Exception as e:
-            print(f"[TiingoFetcher] Error fetching crypto: {e}")
-            return {ticker: pd.DataFrame() for ticker in tickers}
-            
+        data = self.client.get_crypto_price_history(
+            tickers=tickers,
+            startDate=start_date,
+            endDate=end_date,
+            resampleFreq=resample_freq,
+        )
+
         # Tiingo returns a list of dicts, each with 'ticker' and 'priceData'
         result = {}
         for item in data:
-            ticker = item['ticker']
-            df = pd.DataFrame(item['priceData'])
+            ticker = item.get('ticker')
+            price_data = item.get('priceData', [])
+            if not ticker or not price_data:
+                logger.warning("Crypto ticker missing data in response — skipping item.")
+                continue
+            df = pd.DataFrame(price_data)
             result[ticker] = self._normalize_ohlcv(df)
+
         return result

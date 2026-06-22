@@ -3,11 +3,11 @@ import pandas as pd
 from alphadataforge.providers.alphavantage_fetcher import AlphaVantageFetcher
 
 @pytest.fixture
-def mock_fetcher():
-    """Returns a fetcher but we override api_key so it doesn't need .env to run unit tests"""
-    fetcher = AlphaVantageFetcher()
-    fetcher.api_key = "demo"
-    return fetcher
+def mock_fetcher(monkeypatch):
+    """Returns a fetcher with a demo API key injected before construction."""
+    from alphadataforge.config import settings
+    monkeypatch.setattr(settings.config, "ALPHAVANTAGE_API_KEY", "demo")
+    return AlphaVantageFetcher()
 
 def test_alphavantage_parse_response_logic(mock_fetcher):
     """
