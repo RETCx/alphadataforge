@@ -66,6 +66,7 @@ class BaseDataFetcher(ABC):
         Retries up to 3 times with exponential backoff for transient network errors.
         Raises HTTPError for non-retryable server errors (4xx).
         """
+        logger.debug("GET %s params=%s", url, list((params or {}).keys()))
         response = requests.get(url, params=params, headers=headers, timeout=30)
 
         # Raise specific error for rate-limiting so tenacity can retry it
@@ -74,7 +75,11 @@ class BaseDataFetcher(ABC):
             raise RequestException(f"Rate limited by server (HTTP 429) for URL: {url}")
 
         response.raise_for_status()
-        return response.json()
+        try:
+            return response.json()
+        except ValueError as e:
+            logger.error("Failed to parse JSON response from %s. Snippet: %s", url, response.text[:200])
+            raise ValueError(f"Invalid JSON response from API: {e}")
     
     def _normalize_ohlcv(self, df: pd.DataFrame) -> pd.DataFrame:
         """

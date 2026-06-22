@@ -1,5 +1,5 @@
 import pandas as pd
-from typing import Optional
+from typing import Optional, List, Dict
 
 from ..core.base_fetcher import BaseDataFetcher
 from ..config.settings import config
@@ -62,11 +62,7 @@ class FMPFetcher(BaseDataFetcher):
         # 'non-split-adjusted' = Completely raw (as-traded, no splits, no dividends)
         endpoint = "historical-price-eod/dividend-adjusted" if adjusted else "historical-price-eod/non-split-adjusted"
         
-        try:
-            raw_json = self._make_request(endpoint, **params)
-        except Exception as e:
-            logger.error("Failed to fetch FMP prices for %s: %s", symbol, e)
-            return pd.DataFrame()
+        raw_json = self._make_request(endpoint, **params)
             
         historical = raw_json if isinstance(raw_json, list) else raw_json.get("historical", [])
         if not historical:
@@ -83,3 +79,25 @@ class FMPFetcher(BaseDataFetcher):
         # We just normalize the columns and return.
         
         return self._normalize_ohlcv(df)
+
+    def fetch_multiple(
+        self,
+        symbols: List[str],
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        outputsize: str = "full",
+        adjusted: bool = False,
+        **kwargs
+    ) -> Dict[str, pd.DataFrame]:
+        """
+        Fetch price data for multiple symbols.
+        Passes outputsize and adjusted down to fetch_single.
+        """
+        return super().fetch_multiple(
+            symbols,
+            start_date=start_date,
+            end_date=end_date,
+            outputsize=outputsize,
+            adjusted=adjusted,
+            **kwargs
+        )

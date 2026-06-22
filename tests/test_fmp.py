@@ -83,3 +83,23 @@ def test_fmp_fetcher_single_adjusted(mock_http, mock_config, mock_fmp_response):
         "https://financialmodelingprep.com/stable/historical-price-eod/dividend-adjusted", 
         params={'symbol': 'AAPL', 'apikey': 'test_key'}
     )
+
+@patch('alphadataforge.providers.fmp_fetcher.config')
+@patch('alphadataforge.providers.fmp_fetcher.FMPFetcher._make_http_request')
+def test_fmp_fetcher_single_error(mock_http, mock_config):
+    mock_config.FMP_API_KEY = "test_key"
+    mock_http.side_effect = ValueError("API Error")
+    
+    fetcher = FMPFetcher()
+    with pytest.raises(ValueError, match="API Error"):
+        fetcher.fetch_single("AAPL")
+
+@patch('alphadataforge.providers.fmp_fetcher.config')
+@patch('alphadataforge.providers.fmp_fetcher.FMPFetcher._make_http_request')
+def test_fmp_fetcher_single_empty(mock_http, mock_config):
+    mock_config.FMP_API_KEY = "test_key"
+    mock_http.return_value = {"symbol": "INVALID", "historical": []}
+    
+    fetcher = FMPFetcher()
+    df = fetcher.fetch_single("INVALID")
+    assert df.empty

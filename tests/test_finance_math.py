@@ -1,3 +1,4 @@
+import pytest
 import pandas as pd
 import numpy as np
 from alphadataforge.utils.finance_math import calculate_adjusted_prices
@@ -90,3 +91,19 @@ def test_calculate_adjusted_prices_missing_columns():
     adj = calculate_adjusted_prices(raw, divs, splits)
     
     assert adj.loc['2023-01-01', 'Adj Close'] == 100.0 * 0.9
+
+def test_calculate_adjusted_prices_missing_required_columns():
+    """Test that missing OHLCV columns raise a clear ValueError."""
+    bad_df = pd.DataFrame({
+        'Date': pd.to_datetime(['2023-01-01']),
+        'Open': [100.0],
+        # Missing: High, Low, Close, Volume
+    }).set_index('Date')
+
+    with pytest.raises(ValueError, match="Missing:"):
+        calculate_adjusted_prices(bad_df, pd.DataFrame(), pd.DataFrame())
+
+def test_calculate_adjusted_prices_empty_returns_empty():
+    """Test that an empty raw_df is returned as-is without error."""
+    result = calculate_adjusted_prices(pd.DataFrame(), pd.DataFrame(), pd.DataFrame())
+    assert result.empty

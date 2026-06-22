@@ -148,6 +148,9 @@ class YFinanceFetcher(BaseDataFetcher):
             Exception: If yfinance ticker lookup fails.
         """
         logger.info("Fetching news for %s...", symbol)
+        self._validate_inputs(symbol)
+        if not isinstance(count, int) or count <= 0:
+            raise ValueError(f"count must be a positive integer, got: {count!r}")
         ticker = yf.Ticker(symbol)
         articles = ticker.news
         if not articles:
@@ -175,6 +178,7 @@ class YFinanceFetcher(BaseDataFetcher):
         Returns: dict (use pd.Series(result) to convert if needed)
         """
         logger.info("Fetching info for %s...", symbol)
+        self._validate_inputs(symbol)
         return yf.Ticker(symbol).info
 
     def fetch_financials(
@@ -200,6 +204,7 @@ class YFinanceFetcher(BaseDataFetcher):
             "Fetching %s statement for %s (%s)...",
             statement, symbol, 'quarterly' if quarterly else 'annual',
         )
+        self._validate_inputs(symbol)
         ticker = yf.Ticker(symbol)
 
         if statement == "income":

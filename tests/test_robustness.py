@@ -1,5 +1,6 @@
 import pytest
 import pandas as pd
+from unittest.mock import patch
 from alphadataforge.data.price import Price
 from alphadataforge.providers.yfinance_fetcher import YFinanceFetcher
 from alphadataforge.providers.tiingo_fetcher import TiingoFetcher
@@ -35,6 +36,22 @@ class TestNormalization:
             assert col in df.columns
         assert isinstance(df.index, pd.DatetimeIndex)
 
+    def test_normalize_ohlcv_handles_multiindex_and_nans(self, yf_fetcher):
+        import numpy as np
+        # Create a df with MultiIndex and NaNs
+        mi = pd.MultiIndex.from_tuples([('close', 'AAPL'), ('open', 'AAPL')])
+        df = pd.DataFrame([[np.nan, np.nan], [np.nan, np.nan]], columns=mi)
+        # All NaN should return empty
+        norm = yf_fetcher._normalize_ohlcv(df)
+        assert norm.empty
+        
+        # Now with some values
+        df = pd.DataFrame([[150.0, 149.0]], columns=mi, index=["2023-01-01"])
+        norm = yf_fetcher._normalize_ohlcv(df)
+        assert not norm.empty
+        assert 'Close' in norm.columns
+        assert 'Open' in norm.columns
+
 class TestValidation:
     """2. Validation Test: Ensuring bad inputs are caught early."""
     
@@ -49,6 +66,27 @@ class TestValidation:
     def test_invalid_date_format_raises_error(self, yf_fetcher):
         with pytest.raises(ValueError, match="start_date format must be YYYY-MM-DD"):
             yf_fetcher.fetch_single("AAPL", start_date="01-01-2023")
+
+    @patch('alphadataforge.providers.alphavantage_fetcher.config')
+    def test_apikey_missing_raises_error(self, mock_config):
+        from alphadataforge.providers.alphavantage_fetcher import AlphaVantageFetcher
+        mock_config.ALPHAVANTAGE_API_KEY = None
+        with pytest.raises(ValueError, match="ALPHAVANTAGE_API_KEY is not set"):
+            AlphaVantageFetcher()
+
+    @patch('alphadataforge.providers.tiingo_fetcher.config')
+    def test_tiingo_apikey_missing_raises_error(self, mock_config):
+        from alphadataforge.providers.tiingo_fetcher import TiingoFetcher
+        mock_config.TIINGO_API_KEY = None
+        with pytest.raises(ValueError, match="TIINGO_API_KEY is not set"):
+            TiingoFetcher()
+
+    @patch('alphadataforge.providers.fmp_fetcher.config')
+    def test_fmp_apikey_missing_raises_error(self, mock_config):
+        from alphadataforge.providers.fmp_fetcher import FMPFetcher
+        mock_config.FMP_API_KEY = None
+        with pytest.raises(ValueError, match="FMP_API_KEY is not set"):
+            FMPFetcher()
 
 class TestErrorHandling:
     """3. Error Handling Test: Validate new fail-fast & skip-on-failure behavior."""
@@ -67,6 +105,70 @@ class TestErrorHandling:
         assert not data["AAPL"].empty
         # Invalid ticker should be excluded (not present in results)
         assert "INVALID_TICKER_123" not in data
+
+    @patch('requests.get')
+    def test_retry_on_rate_limit(self, mock_get):
+        from alphadataforge.core.base_fetcher import BaseDataFetcher
+        import requests
+        
+        class DummyFetcher(BaseDataFetcher):
+            def fetch_single(self, *args, **kwargs): pass
+            
+        fetcher = DummyFetcher()
+        
+        # Mock requests.get to return 429 then 200
+        response_429 = requests.Response()
+        response_429.status_code = 429
+        
+        response_200 = requests.Response()
+        response_200.status_code = 200
+        response_200._content = b'{"success": true}'
+        
+        mock_get.side_effect = [response_429, response_200]
+        
+        # This should succeed after 1 retry
+        result = fetcher._make_http_request("http://dummy")
+        assert result == {"success": True}
+        assert mock_get.call_count == 2
+
+    @patch('requests.get')
+    def test_invalid_json_raises_value_error(self, mock_get):
+        """_make_http_request should raise ValueError when response is not valid JSON."""
+        from alphadataforge.core.base_fetcher import BaseDataFetcher
+        import requests
+
+        class DummyFetcher(BaseDataFetcher):
+            def fetch_single(self, *args, **kwargs): pass
+
+        fetcher = DummyFetcher()
+
+        response_ok = requests.Response()
+        response_ok.status_code = 200
+        response_ok._content = b'<html>Not JSON</html>'
+        mock_get.return_value = response_ok
+
+        with pytest.raises(ValueError, match="Invalid JSON response from API"):
+            fetcher._make_http_request("http://dummy")
+
+    def test_fetch_multiple_empty_list(self, yf_fetcher):
+        """fetch_multiple([]) should return empty dict without raising."""
+        result = yf_fetcher.fetch_multiple([])
+        assert result == {}
+
+    def test_fetch_news_empty_symbol_raises(self, yf_fetcher):
+        """fetch_news with empty symbol should raise ValueError."""
+        with pytest.raises(ValueError, match="Symbol must be a non-empty string"):
+            yf_fetcher.fetch_news("")
+
+    def test_fetch_news_invalid_count_raises(self, yf_fetcher):
+        """fetch_news with non-positive count should raise ValueError."""
+        with pytest.raises(ValueError, match="count must be a positive integer"):
+            yf_fetcher.fetch_news("AAPL", count=0)
+
+    def test_fetch_financials_invalid_statement_raises(self, yf_fetcher):
+        """fetch_financials with unknown statement type should raise ValueError."""
+        with pytest.raises(ValueError, match="Unknown statement type"):
+            yf_fetcher.fetch_financials("AAPL", statement="unknown")
         
 class TestProviderSelection:
     """4. Provider Selection Test: The Facade should route correctly."""

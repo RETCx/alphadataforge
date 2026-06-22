@@ -1,8 +1,8 @@
 import pandas as pd
 from typing import Optional, List, Dict
 
-from requests.exceptions import RequestException
-from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
+import time
+from ..utils.finance_math import calculate_adjusted_prices
 
 from ..core.base_fetcher import BaseDataFetcher
 from ..config.settings import config
@@ -118,6 +118,8 @@ class AlphaVantageFetcher(BaseDataFetcher):
             outputsize=outputsize
         )
         df = self._parse_response(raw_json, time_series_key)
+        if df.empty:
+            logger.warning("_parse_response returned empty for %s (key='%s').", symbol, time_series_key)
         
         # Alpha Vantage doesn't let us filter by date in the API call directly
         # We must filter it locally in pandas
@@ -130,7 +132,6 @@ class AlphaVantageFetcher(BaseDataFetcher):
 
         # --- Step 2: Fetch Dividends & Splits (separate try/except) ---
         if adjusted and not df.empty:
-            import time
 
             div_df = pd.DataFrame(columns=['Dividend'])
             split_df = pd.DataFrame(columns=['SplitFactor'])
@@ -168,7 +169,6 @@ class AlphaVantageFetcher(BaseDataFetcher):
                 )
 
             # --- 2c: Apply adjustment ---
-            from ..utils.finance_math import calculate_adjusted_prices
             df = self._normalize_ohlcv(df)
             df = calculate_adjusted_prices(df, div_df, split_df)
                     

@@ -95,16 +95,27 @@ class TiingoFetcher(BaseDataFetcher):
         logger.info("Batch fetching %d symbols...", len(symbols))
         if not symbols:
             return {}
-            
-        combined: pd.DataFrame = self.client.get_dataframe(
-            symbols,
-            startDate=start_date,
-            endDate=end_date,
-            frequency=frequency,
-            metric_name=metric_name,
-            **kwargs
-        )
-        
+
+        try:
+            combined: pd.DataFrame = self.client.get_dataframe(
+                symbols,
+                startDate=start_date,
+                endDate=end_date,
+                frequency=frequency,
+                metric_name=metric_name,
+                **kwargs
+            )
+        except Exception as e:
+            logger.error(
+                "Tiingo batch fetch failed entirely for %s symbols: %s. "
+                "Falling back to per-symbol fetch.", len(symbols), e
+            )
+            # Fallback: use base class loop so partial results are still returned
+            return super().fetch_multiple(
+                symbols, start_date=start_date, end_date=end_date,
+                frequency=frequency, **kwargs
+            )
+
         # When passing a list, tiingo returns a DataFrame with symbol columns
         results = {}
         for sym in symbols:
@@ -253,12 +264,19 @@ class TiingoFetcher(BaseDataFetcher):
         # Tiingo returns a list of dicts, each with 'ticker' and 'priceData'
         result = {}
         for item in data:
-            ticker = item.get('ticker')
+            ticker = item.get('ticker', '<unknown>')
             price_data = item.get('priceData', [])
-            if not ticker or not price_data:
-                logger.warning("Crypto ticker missing data in response — skipping item.")
+            if not price_data:
+                logger.warning("Crypto ticker '%s' has no priceData — skipping.", ticker)
                 continue
-            df = pd.DataFrame(price_data)
-            result[ticker] = self._normalize_ohlcv(df)
+            try:
+                df = pd.DataFrame(price_data)
+                normalized = self._normalize_ohlcv(df)
+                if normalized.empty:
+                    logger.warning("Crypto ticker '%s' normalized to empty — skipping.", ticker)
+                    continue
+                result[ticker] = normalized
+            except Exception as e:
+                logger.error("Failed to process crypto ticker '%s': %s — skipping.", ticker, e)
 
         return result

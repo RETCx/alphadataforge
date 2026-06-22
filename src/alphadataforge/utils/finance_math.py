@@ -20,7 +20,15 @@ def calculate_adjusted_prices(
     """
     if raw_df.empty:
         return raw_df
-        
+
+    required_cols = {'Open', 'High', 'Low', 'Close', 'Volume'}
+    missing = required_cols - set(raw_df.columns)
+    if missing:
+        raise ValueError(
+            f"calculate_adjusted_prices requires columns {required_cols}. "
+            f"Missing: {missing}. Got: {list(raw_df.columns)}"
+        )
+
     df = raw_df.copy()
     
     # Ensure index is sorted ascending (oldest to newest)
