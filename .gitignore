@@ -36,3 +36,5 @@ MANIFEST
 .vscode/
 .idea/
 *.swp
+
+test.ipynb
