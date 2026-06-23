@@ -1,6 +1,8 @@
 from alphadataforge.providers.yfinance_fetcher import YFinanceFetcher
 from alphadataforge.data.price import Price
 import pandas as pd
+import time
+import requests_cache
 
 def play_with_fetchers():
     print("=" * 60)
@@ -104,5 +106,35 @@ def play_with_fetchers():
     print("Test completed")
     print("=" * 60)
 
+def test_performance():
+    print("\n" + "=" * 60)
+    print("Performance Test: Caching & Asynchronous Fetching")
+    print("=" * 60)
+    
+    # We clear the cache to ensure the first run hits the network
+    print("\n[0] Clearing cache to simulate first run...")
+    requests_cache.clear()
+    
+    symbols = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA", "NFLX", "JPM", "V"]
+    yf_fetcher = YFinanceFetcher()
+    
+    print(f"\n[1] Run 1: Network Fetch + ThreadPool (Downloading {len(symbols)} symbols...)")
+    start_time = time.time()
+    _ = yf_fetcher.fetch_multiple(symbols, start_date="2023-01-01", end_date="2023-06-01")
+    run1_time = time.time() - start_time
+    print(f"  -> Finished in: {run1_time:.2f} seconds")
+    
+    print(f"\n[2] Run 2: Cached Fetch (Downloading SAME {len(symbols)} symbols...)")
+    start_time = time.time()
+    _ = yf_fetcher.fetch_multiple(symbols, start_date="2023-01-01", end_date="2023-06-01")
+    run2_time = time.time() - start_time
+    print(f"  -> Finished in: {run2_time:.2f} seconds")
+    
+    print("\n[3] Conclusion:")
+    if run1_time > 0 and run2_time > 0:
+        print(f"  - Caching made it {run1_time / run2_time:.1f}x faster!")
+    print(f"  - Async fetching (ThreadPool) allowed {len(symbols)} network requests in just {run1_time:.2f}s!")
+
 if __name__ == "__main__":
-    play_with_fetchers()
+    # play_with_fetchers()
+    test_performance()
