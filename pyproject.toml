@@ -15,6 +15,7 @@ dependencies = [
     "tiingo",
     "google-cloud-bigquery",
     "requests",
+    "requests-cache",
     "tenacity",
     "scikit-learn",
     "python-dotenv"

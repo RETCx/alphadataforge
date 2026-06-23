@@ -6,8 +6,17 @@ import time
 from datetime import datetime
 
 import requests
+import requests_cache
 from requests.exceptions import RequestException, HTTPError, Timeout, ConnectionError
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
+import concurrent.futures
+
+# Globally patch requests to use sqlite cache (expires after 24 hours)
+requests_cache.install_cache(
+    cache_name='alphadataforge_cache', 
+    backend='sqlite', 
+    expire_after=86400
+)
 
 from ..utils.logger import setup_logger
 
@@ -135,27 +144,41 @@ class BaseDataFetcher(ABC):
         symbols: List[str], 
         start_date: Optional[str] = None, 
         end_date: Optional[str] = None,
+        max_workers: int = 5,
         **kwargs
     ) -> Dict[str, pd.DataFrame]:
         """
         Fetch data for multiple tickers, returning a dictionary of DataFrames.
         Symbols that fail are logged and excluded from the result.
+        Uses ThreadPoolExecutor for concurrent fetching to improve performance.
         """
         if not symbols:
             return {}
 
         results = {}
-        for symbol in symbols:
-            try:
-                logger.info("Fetching %s...", symbol)
-                # It calls the child class's fetch_single (e.g., yfinance) for each ticker
-                results[symbol] = self.fetch_single(symbol, start_date, end_date, **kwargs)
-            except Exception as e:
-                logger.error("Failed to fetch %s — skipping. Error: %s", symbol, e)
-                # Do NOT include failed symbol in results
 
-            # add random delay to avoid API rate limits
-            time.sleep(rd.uniform(0.5, 1))
+        def _fetch_one(symbol):
+            try:
+                # Add random delay to prevent instantly hitting rate limits
+                time.sleep(rd.uniform(0.1, 0.5))
+                df = self.fetch_single(symbol, start_date, end_date, **kwargs)
+                return symbol, df, None
+            except Exception as e:
+                return symbol, None, e
+
+        logger.info(
+            "Batch fetching %d symbols concurrently (max_workers=%d)...", 
+            len(symbols), max_workers
+        )
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_fetch_one, sym): sym for sym in symbols}
+            for future in concurrent.futures.as_completed(futures):
+                sym, df, err = future.result()
+                if err:
+                    logger.error("Failed to fetch %s — skipping. Error: %s", sym, err)
+                else:
+                    results[sym] = df
 
         succeeded = len(results)
         failed = len(symbols) - succeeded

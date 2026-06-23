@@ -38,3 +38,4 @@ MANIFEST
 *.swp
 
 test.ipynb
+alphadataforge_cache.sqlite
