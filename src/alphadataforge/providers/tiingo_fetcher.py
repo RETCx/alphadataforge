@@ -2,6 +2,7 @@ import pandas as pd
 from typing import Optional, List, Dict, Any
 from tiingo import TiingoClient
 from ..core.base_fetcher import BaseDataFetcher
+from ..core.exceptions import ProviderConfigurationError
 from ..config.settings import config
 from ..utils.logger import setup_logger
 
@@ -21,7 +22,7 @@ class TiingoFetcher(BaseDataFetcher):
         self.api_key = config.TIINGO_API_KEY
 
         if not self.api_key:
-            raise ValueError(
+            raise ProviderConfigurationError(
                 "TIINGO_API_KEY is not set. "
                 "Please set it in your .env file or environment variables."
             )

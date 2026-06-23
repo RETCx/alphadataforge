@@ -5,6 +5,7 @@ from alphadataforge.data.price import Price
 from alphadataforge.providers.yfinance_fetcher import YFinanceFetcher
 from alphadataforge.providers.tiingo_fetcher import TiingoFetcher
 from alphadataforge.config.settings import config
+from alphadataforge.core.exceptions import ProviderConfigurationError
 
 @pytest.fixture
 def yf_fetcher():
@@ -71,21 +72,21 @@ class TestValidation:
     def test_apikey_missing_raises_error(self, mock_config):
         from alphadataforge.providers.alphavantage_fetcher import AlphaVantageFetcher
         mock_config.ALPHAVANTAGE_API_KEY = None
-        with pytest.raises(ValueError, match="ALPHAVANTAGE_API_KEY is not set"):
+        with pytest.raises(ProviderConfigurationError, match="ALPHAVANTAGE_API_KEY is not set"):
             AlphaVantageFetcher()
 
     @patch('alphadataforge.providers.tiingo_fetcher.config')
     def test_tiingo_apikey_missing_raises_error(self, mock_config):
         from alphadataforge.providers.tiingo_fetcher import TiingoFetcher
         mock_config.TIINGO_API_KEY = None
-        with pytest.raises(ValueError, match="TIINGO_API_KEY is not set"):
+        with pytest.raises(ProviderConfigurationError, match="TIINGO_API_KEY is not set"):
             TiingoFetcher()
 
     @patch('alphadataforge.providers.fmp_fetcher.config')
     def test_fmp_apikey_missing_raises_error(self, mock_config):
         from alphadataforge.providers.fmp_fetcher import FMPFetcher
         mock_config.FMP_API_KEY = None
-        with pytest.raises(ValueError, match="FMP_API_KEY is not set"):
+        with pytest.raises(ProviderConfigurationError, match="FMP_API_KEY is not set"):
             FMPFetcher()
 
 class TestErrorHandling:

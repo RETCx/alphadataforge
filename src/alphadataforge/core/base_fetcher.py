@@ -10,10 +10,16 @@ import requests_cache
 from requests.exceptions import RequestException, HTTPError, Timeout, ConnectionError
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
 import concurrent.futures
+import tempfile
+import os
+
+from .exceptions import RateLimitExceededError
 
 # Globally patch requests to use sqlite cache (expires after 24 hours)
+# Store cache in the OS's temp directory to avoid cluttering the user's workspace
+cache_path = os.path.join(tempfile.gettempdir(), 'alphadataforge_cache')
 requests_cache.install_cache(
-    cache_name='alphadataforge_cache', 
+    cache_name=cache_path, 
     backend='sqlite', 
     expire_after=86400
 )
@@ -65,7 +71,7 @@ class BaseDataFetcher(ABC):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=30),
-        retry=retry_if_exception_type((RequestException, Timeout, ConnectionError)),
+        retry=retry_if_exception_type((RequestException, Timeout, ConnectionError, RateLimitExceededError)),
         before_sleep=before_sleep_log(logger, log_level=20),  # 20 = INFO
         reraise=True,
     )
@@ -81,7 +87,7 @@ class BaseDataFetcher(ABC):
         # Raise specific error for rate-limiting so tenacity can retry it
         if response.status_code == 429:
             logger.warning("Rate limited (HTTP 429). Retrying after backoff...")
-            raise RequestException(f"Rate limited by server (HTTP 429) for URL: {url}")
+            raise RateLimitExceededError(f"Rate limited by server (HTTP 429) for URL: {url}")
 
         response.raise_for_status()
         try:

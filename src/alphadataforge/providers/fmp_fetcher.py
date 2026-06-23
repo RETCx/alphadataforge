@@ -1,7 +1,8 @@
 import pandas as pd
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 
 from ..core.base_fetcher import BaseDataFetcher
+from ..core.exceptions import ProviderConfigurationError
 from ..config.settings import config
 from ..utils.logger import setup_logger
 
@@ -19,7 +20,7 @@ class FMPFetcher(BaseDataFetcher):
         self.base_url = "https://financialmodelingprep.com/stable"
 
         if not self.api_key:
-            raise ValueError(
+            raise ProviderConfigurationError(
                 "FMP_API_KEY is not set. "
                 "Please set it in your .env file or environment variables."
             )

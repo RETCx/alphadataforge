@@ -5,6 +5,7 @@ import time
 from ..utils.finance_math import calculate_adjusted_prices
 
 from ..core.base_fetcher import BaseDataFetcher
+from ..core.exceptions import ProviderConfigurationError, RateLimitExceededError, InvalidTickerError
 from ..config.settings import config
 from ..utils.logger import setup_logger
 
@@ -25,7 +26,7 @@ class AlphaVantageFetcher(BaseDataFetcher):
         self.base_url = "https://www.alphavantage.co/query"
 
         if not self.api_key:
-            raise ValueError(
+            raise ProviderConfigurationError(
                 "ALPHAVANTAGE_API_KEY is not set. "
                 "Please set it in your .env file or environment variables."
             )
@@ -41,9 +42,9 @@ class AlphaVantageFetcher(BaseDataFetcher):
         
         # Alpha Vantage returns an error message in the JSON payload instead of HTTP status sometimes
         if "Error Message" in data:
-            raise ValueError(f"AlphaVantage API Error: {data['Error Message']}")
+            raise InvalidTickerError(f"AlphaVantage API Error: {data['Error Message']}")
         if "Information" in data:
-            raise RuntimeError(
+            raise RateLimitExceededError(
                 f"AlphaVantage rate limit or notice: {data['Information']}"
             )
         return data
