@@ -128,37 +128,15 @@ def test_fetch_forex(yf_fetcher):
 # TiingoFetcher Tests
 # -------------------------------------------------------------------
 
-def test_tiingo_fetch_single(tiingo_fetcher):
-    """Test fetching a single symbol using Tiingo."""
-    df = tiingo_fetcher.fetch_single("AAPL", start_date="2023-01-01", end_date="2023-01-05")
-    assert isinstance(df, pd.DataFrame)
-    assert not df.empty
-    assert 'Close' in df.columns or 'Adj Close' in df.columns
-
-def test_tiingo_fetch_multiple(tiingo_fetcher):
-    """Test fetching multiple symbols at once using Tiingo."""
-    symbols = ["AAPL", "GOOGL"]
-    data_dict = tiingo_fetcher.fetch_multiple(symbols, start_date="2023-01-01", end_date="2023-01-05")
-    assert isinstance(data_dict, dict)
-    assert set(data_dict.keys()) == set(symbols)
-    
-    for symbol, df in data_dict.items():
-        assert isinstance(df, pd.DataFrame)
-        assert not df.empty
-
-def test_tiingo_fetch_crypto(tiingo_fetcher):
-    """Test fetching crypto price via Tiingo (BTCUSD)."""
-    data = tiingo_fetcher.fetch_crypto(["BTCUSD"], start_date="2023-01-01", end_date="2023-01-05")
-    assert isinstance(data, dict)
-    # Tiingo API returns crypto tickers in lowercase
-    assert "btcusd" in data
-    assert not data["btcusd"].empty
-
 def test_price_tiingo_provider():
     """Test Facade API with tiingo provider."""
-    if not config.TIINGO_API_KEY:
-        pytest.skip("TIINGO_API_KEY not set. Skipping Tiingo Facade test.")
+    from unittest.mock import patch
+    import pandas as pd
     
-    df = Price.get("AAPL", provider="tiingo", start_date="2023-01-01", end_date="2023-01-05")
-    assert isinstance(df, pd.DataFrame)
-    assert not df.empty
+    # We mock fetch_single because we already tested TiingoFetcher in test_tiingo.py
+    # This prevents the CI from hitting the real API with a dummy key.
+    with patch('alphadataforge.providers.tiingo_fetcher.TiingoFetcher.fetch_single') as mock_fetch:
+        mock_fetch.return_value = pd.DataFrame({'Close': [150.0]})
+        df = Price.get("AAPL", provider="tiingo", start_date="2023-01-01", end_date="2023-01-05")
+        assert isinstance(df, pd.DataFrame)
+        assert not df.empty
