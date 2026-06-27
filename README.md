@@ -33,14 +33,18 @@ FMP_API_KEY="your_fmp_key"
 ```
 alphadataforge/
 ├── data/
-│   ├── price.py          ← Unified Price Facade (Price.get())
+│   ├── price.py          ← Unified Price Facade (Price.get(), Price.compare(), Price.consensus())
 │   └── fundamental.py    ← Unified Fundamental Facade (Fundamentals.get_info(), etc.)
 │
 ├── providers/
 │   ├── yfinance_fetcher.py
 │   ├── alphavantage_fetcher.py
 │   ├── tiingo_fetcher.py
-│   └── fmp_fetcher.py
+│   ├── fmp_fetcher.py
+│   └── hybrid_fetcher.py  ← AlphaVantage (raw) + Tiingo (div/splits) + local math engine
+│
+├── utils/
+│   └── finance_math.py   ← Local back-adjustment engine (calculate_adjusted_prices)
 │
 └── core/
     ├── base_fetcher.py   ← BaseDataFetcher (caching, retry, normalization)
@@ -75,11 +79,11 @@ df = Price.get("TSLA", provider="tiingo", start_date="2022-01-01")
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `symbol` | `str` or `List[str]` | *required* | Ticker(s) e.g. `"AAPL"` or `["AAPL", "MSFT"]` |
+| `symbols` | `str` or `List[str]` | *required* | Ticker(s) e.g. `"AAPL"` or `["AAPL", "MSFT"]` |
 | `provider` | `str` | `"yfinance"` | `"yfinance"`, `"alphavantage"`, `"tiingo"`, `"fmp"`, `"hybrid_av_tiingo"` |
 | `start_date` | `str` | `None` | `"YYYY-MM-DD"` |
 | `end_date` | `str` | `None` | `"YYYY-MM-DD"` |
-| `**provider_params` | `dict` | `{}` | Extra params passed to the underlying provider (see per-provider sections below) |
+| `provider_params` | `dict` | `{}` | Extra params passed to the underlying provider (see per-provider sections below) |
 
 **Returns:** `pd.DataFrame` (single symbol) or `Dict[str, pd.DataFrame]` (multiple symbols)
 
@@ -123,41 +127,95 @@ To ensure data consistency across all platforms, we tested the fully adjusted pr
 - `alphavantage`: 276.6701
 - `hybrid_av_tiingo`: 276.6701
 
-### Multi-Provider Consensus & Comparison
+### `Price.compare()` — Side-by-Side Multi-Provider
 
-AlphaDataForge provides built-in tools to fetch from multiple providers concurrently and either compare them side-by-side or calculate a consensus (mean/median) to automatically filter out bad data.
+Fetches from multiple providers **concurrently** (ThreadPoolExecutor) and returns a single **MultiIndex DataFrame** with providers as level-0 columns.
 
 ```python
-# 1. Compare across all providers (Returns a MultiIndex DataFrame)
+# Compare all 5 providers with adjusted prices
 multi_df = Price.compare("AAPL", start_date="2023-01-01", provider_params={"adjusted": True})
 
-# Access specific provider
-yfinance_close = multi_df["yfinance"]["Close"]
+# Access a specific provider's data
+yfinance_df = multi_df["yfinance"]
 
-# 2. Consensus Price (Calculates the median across all providers)
-consensus_df = Price.consensus("AAPL", start_date="2023-01-01", method="median")
-print(consensus_df.head())
+# Extract one column across all providers
+adj_close_all = multi_df.xs("Adj Close", axis=1, level=1)
 ```
 
-#### Integrating Custom External Data (`custom_data`)
-You can inject your own external DataFrames (from a CSV, database, etc.) directly into the Consensus engine! 
-*Note: You must normalize your DataFrame's columns to the AlphaDataForge standard (`Open`, `High`, `Low`, `Close`, `Volume`) before passing it in.*
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `symbol` | `str` | *required* | Single ticker |
+| `start_date` | `str` | `None` | `"YYYY-MM-DD"` |
+| `end_date` | `str` | `None` | `"YYYY-MM-DD"` |
+| `providers` | `List[str]` | all 5 providers | Limit which providers to query |
+| `provider_params` | `dict` | `{}` | Passed to all providers (e.g. `{"adjusted": True}`) |
+| `custom_data` | `Dict[str, DataFrame]` | `None` | Inject your own DataFrames to compare alongside API data |
+
+**Returns:** `pd.DataFrame` with MultiIndex columns `(provider, column_name)`
+
+---
+
+### `Price.consensus()` — Aggregated Median/Mean Price
+
+Builds on `compare()` and aggregates across all providers to return a **single reliable DataFrame**, neutralizing outliers from any one source.
+
+```python
+# Median across all providers (recommended — more robust to outliers)
+consensus_df = Price.consensus("AAPL", start_date="2023-01-01", method="median")
+
+# Limit to specific providers
+consensus_df = Price.consensus(
+    "AAPL",
+    providers=["yfinance", "tiingo", "alphavantage"],
+    provider_params={"adjusted": True},
+    method="median"
+)
+```
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `symbol` | `str` | *required* | Single ticker |
+| `start_date` | `str` | `None` | `"YYYY-MM-DD"` |
+| `end_date` | `str` | `None` | `"YYYY-MM-DD"` |
+| `providers` | `List[str]` | all 5 providers | Limit which providers to query |
+| `provider_params` | `dict` | `{}` | Passed to all providers |
+| `custom_data` | `Dict[str, DataFrame]` | `None` | Inject your own DataFrames into the aggregation |
+| `method` | `str` | `"median"` | `"median"` (robust to outliers) or `"mean"` |
+
+**Returns:** `pd.DataFrame` with standard OHLCV columns sorted in standard order
+
+#### Injecting Custom External Data (`custom_data`)
+
+Both `compare()` and `consensus()` accept a `custom_data` parameter — a dictionary of your own DataFrames to include in the comparison or aggregation. Your DataFrame must have a `DatetimeIndex` and column names that match the AlphaDataForge standard (`Open`, `High`, `Low`, `Close`, `Volume`, `Adj Close`, etc.).
 
 ```python
 import pandas as pd
+from alphadataforge.data.price import Price
+from alphadataforge.providers.tiingo_fetcher import TiingoFetcher
+from alphadataforge.utils.finance_math import calculate_adjusted_prices
 
-# Load and Normalize your data
-df_custom = pd.read_csv('my_database.csv')
+# Step 1: Load & Normalize column names to AlphaDataForge standard
+df_custom = pd.read_csv('my_data.csv')
 df_custom = df_custom.rename(columns={'Price': 'Close', 'Vol.': 'Volume'})
 df_custom['Date'] = pd.to_datetime(df_custom['Date'])
 df_custom.set_index('Date', inplace=True)
 
-# Inject custom data into compare or consensus!
+# Step 2 (Optional): Back-adjust with Tiingo dividends/splits if your data is raw
+tf = TiingoFetcher()
+df_tiingo = tf.fetch_single('AAPL', start_date='2023-01-01', end_date='2023-12-31')
+dividends_df = df_tiingo[['divCash']].rename(columns={'divCash': 'Dividend'})
+dividends_df = dividends_df[dividends_df['Dividend'] > 0]
+splits_df = df_tiingo[['splitFactor']].rename(columns={'splitFactor': 'SplitFactor'})
+splits_df = splits_df[splits_df['SplitFactor'] != 1.0]
+df_custom_adjusted = calculate_adjusted_prices(df_custom, dividends_df, splits_df)
+
+# Step 3: Feed into consensus engine
 consensus_df = Price.consensus(
-    "AAPL", 
-    start_date="2026-06-01", 
-    providers=["yfinance", "alphavantage"], 
-    custom_data={"my_local_db": df_custom},
+    "AAPL",
+    start_date="2023-01-01",
+    providers=["yfinance", "alphavantage"],
+    provider_params={"adjusted": True},
+    custom_data={"my_local_db": df_custom_adjusted},
     method="median"
 )
 ```
@@ -399,13 +457,17 @@ df = Price.get("AAPL", provider="tiingo", start_date="2020-01-01")
 
 # With weekly frequency
 df = Price.get("AAPL", provider="tiingo", provider_params={"frequency": "weekly"})
+
+# Adjusted prices (natively returned — no extra API calls)
+df = Price.get("AAPL", provider="tiingo", provider_params={"adjusted": True})
 ```
 
 **Extra `provider_params` for Tiingo Price:**
 
 | Param | Type | Default | Description |
 |---|---|---|---|
-| `frequency` | `str` | `"daily"` | `"daily"`, `"weekly"`, `"monthly"`, `"annually"`. Intraday (`"1min"`, `"5min"`, etc.) requires paid plan. |
+| `frequency` | `str` | `"daily"` | `"daily"`, `"weekly"`, `"monthly"`, `"annually"`. Intraday requires paid plan. |
+| `adjusted` | `bool` | `False` | Returns `Adj Open`, `Adj High`, `Adj Low`, `Adj Close`, `Adj Volume` (natively — no extra API calls). |
 
 **Under the hood (Tiingo):**
 - **API Calls:** 1 call per fetch.
@@ -513,16 +575,16 @@ print(info["ceo"])          # "Timothy D. Cook"
 
 ### Price
 
-| Feature | YFinance | AlphaVantage | Tiingo | FMP |
-|---|---|---|---|---|
-| API Key Required | No | Yes | Yes | Yes |
-| Rate Limit | Unlimited | 25/day | 500/hr | 250/day |
-| Adjusted Prices | Yes | Yes (costs 3 calls) | Yes | Yes |
-| Intraday | Yes (last 60d) | No | Paid only | No |
-| Crypto | Yes (`BTC-USD`) | No | Yes (`BTCUSD`) | No |
-| Forex | Yes (`EURUSD=X`) | No | No | No |
-| Historical Depth | ~20yr | ~20yr | ~30yr | ~30yr |
-| Batch Fetching | Yes (1 API call) | Warning (1 call/symbol) | Yes (1 API call) | Warning (1 call/symbol) |
+| Feature | YFinance | AlphaVantage | Tiingo | FMP | Hybrid (AV+Tiingo) |
+|---|---|---|---|---|---|
+| API Key Required | No | Yes | Yes | Yes | Yes (both AV + Tiingo) |
+| Rate Limit | Unlimited | 25/day | 500/hr | 250/day | 3 AV calls + 2 Tiingo calls |
+| Adjusted Prices | Yes | Yes (3 calls) | Yes (native) | Yes (native) | Yes (local math engine) |
+| Intraday | Yes (last 60d) | No | Paid only | No | No |
+| Crypto | Yes (`BTC-USD`) | No | Yes (`BTCUSD`) | No | No |
+| Forex | Yes (`EURUSD=X`) | No | No | No | No |
+| Historical Depth | ~20yr | ~20yr | ~30yr | ~30yr | ~20yr |
+| Batch Fetching | Yes (1 call) | ⚠️ 1 call/symbol | Yes (1 call) | ⚠️ 1 call/symbol | ⚠️ 1 call/symbol |
 
 ### Fundamentals
 
@@ -546,8 +608,15 @@ print(info["ceo"])          # "Timothy D. Cook"
 - [x] Auto Rate Limit protection (AlphaVantage)
 - [x] Custom Exception hierarchy
 - [x] Fundamentals Facade (Income, Balance, Cashflow, Earnings, Shares Outstanding)
+- [x] Universal Adjusted Prices — all providers return full `Adj Open/High/Low/Close/Volume`
+- [x] Local Back-Adjustment Math Engine (`finance_math.calculate_adjusted_prices`)
+- [x] Hybrid Provider (`hybrid_av_tiingo`) — deepest history + accurate dividends/splits
+- [x] `Price.compare()` — concurrent multi-provider comparison (MultiIndex DataFrame)
+- [x] `Price.consensus()` — mean/median aggregation across providers
+- [x] Custom external DataFrame injection (`custom_data` parameter)
 - [ ] Data Quality Checks (anomaly detection, missing data handling)
 - [ ] Technical Indicators Module (RSI, MACD, Bollinger Bands)
+- [ ] Streaming / real-time price feed
 
 ---
 
