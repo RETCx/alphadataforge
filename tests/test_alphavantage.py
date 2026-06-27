@@ -59,3 +59,45 @@ def test_alphavantage_parse_response_logic(mock_fetcher):
     # Data should be numeric
     assert df.loc["2023-03-24", "Open"] == 132.0
     assert df.loc["2023-03-24", "Volume"] == 5142289
+
+@pytest.mark.vcr
+def test_alphavantage_fetch_single_vcr(monkeypatch):
+    """
+    VCR test that hits the real API once and records it.
+    """
+    from alphadataforge.config import settings
+    # Ensure there is an API key to avoid ProviderConfigurationError
+    if not settings.config.ALPHAVANTAGE_API_KEY:
+        monkeypatch.setattr(settings.config, "ALPHAVANTAGE_API_KEY", "demo")
+        
+    fetcher = AlphaVantageFetcher()
+    # IBM is often supported by the 'demo' key if real key is missing
+    df = fetcher.fetch_single("IBM")
+    
+    assert not df.empty
+    assert 'Close' in df.columns
+    assert 'Volume' in df.columns
+
+@pytest.mark.vcr
+def test_alphavantage_fetch_info_vcr(monkeypatch):
+    from alphadataforge.config import settings
+    if not settings.config.ALPHAVANTAGE_API_KEY:
+        monkeypatch.setattr(settings.config, "ALPHAVANTAGE_API_KEY", "demo")
+        
+    fetcher = AlphaVantageFetcher()
+    info = fetcher.fetch_info("IBM")
+    
+    assert isinstance(info, dict)
+    assert len(info) > 0
+
+@pytest.mark.vcr
+def test_alphavantage_fetch_financials_vcr(monkeypatch):
+    from alphadataforge.config import settings
+    if not settings.config.ALPHAVANTAGE_API_KEY:
+        monkeypatch.setattr(settings.config, "ALPHAVANTAGE_API_KEY", "demo")
+        
+    fetcher = AlphaVantageFetcher()
+    df = fetcher.fetch_financials("IBM", statement="income", period="annual")
+    
+    assert not df.empty
+    assert "Net_Income" in df.columns

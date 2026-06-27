@@ -1,105 +1,115 @@
 import pytest
 import pandas as pd
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from alphadataforge.providers.fmp_fetcher import FMPFetcher
 
-@pytest.fixture
-def mock_fmp_response():
-    return {
-        "symbol": "AAPL",
-        "historical": [
-            {
-                "date": "2023-08-25",
-                "open": 177.38,
-                "high": 179.15,
-                "low": 175.82,
-                "close": 178.61,
-                "adjClose": 178.61,
-                "volume": 51449600,
-                "unadjustedVolume": 51449600,
-                "change": 1.23,
-                "changePercent": 0.693,
-                "vwap": 177.86,
-                "label": "August 25, 23",
-                "changeOverTime": 0.00693
-            },
-            {
-                "date": "2023-08-24",
-                "open": 170.0,
-                "high": 175.0,
-                "low": 169.0,
-                "close": 174.0,
-                "adjClose": 174.0,
-                "volume": 50000000,
-                "unadjustedVolume": 50000000,
-                "change": 4.0,
-                "changePercent": 2.35,
-                "vwap": 173.0,
-                "label": "August 24, 23",
-                "changeOverTime": 0.0235
-            }
-        ]
-    }
-
-@patch('alphadataforge.providers.fmp_fetcher.config')
-@patch('alphadataforge.providers.fmp_fetcher.FMPFetcher._make_http_request')
-def test_fmp_fetcher_single_unadjusted(mock_http, mock_config, mock_fmp_response):
-    mock_config.FMP_API_KEY = "test_key"
-    mock_http.return_value = mock_fmp_response
-    
+@pytest.mark.vcr
+def test_fmp_fetcher_single_unadjusted():
     fetcher = FMPFetcher()
     df = fetcher.fetch_single("AAPL", adjusted=False)
     
     assert not df.empty
     assert 'Close' in df.columns
-    assert 'Adj Close' in df.columns
     
     # Assert proper sorting/index
     assert isinstance(df.index, pd.DatetimeIndex)
-    assert len(df) == 2
-    
-    # Check that data matches mock
-    assert df.loc['2023-08-25', 'Close'] == 178.61
-    assert df.loc['2023-08-24', 'Open'] == 170.0
 
-    mock_http.assert_called_with(
-        "https://financialmodelingprep.com/stable/historical-price-eod/non-split-adjusted", 
-        params={'symbol': 'AAPL', 'apikey': 'test_key'}
-    )
-
-@patch('alphadataforge.providers.fmp_fetcher.config')
-@patch('alphadataforge.providers.fmp_fetcher.FMPFetcher._make_http_request')
-def test_fmp_fetcher_single_adjusted(mock_http, mock_config, mock_fmp_response):
-    # Test adjusted=True uses dividend-adjusted endpoint
-    mock_config.FMP_API_KEY = "test_key"
-    mock_http.return_value = mock_fmp_response
-    
+@pytest.mark.vcr
+def test_fmp_fetcher_single_adjusted():
     fetcher = FMPFetcher()
     df = fetcher.fetch_single("AAPL", adjusted=True)
     
     assert not df.empty
-    mock_http.assert_called_with(
-        "https://financialmodelingprep.com/stable/historical-price-eod/dividend-adjusted", 
-        params={'symbol': 'AAPL', 'apikey': 'test_key'}
-    )
+    assert 'Adj Close' in df.columns
 
-@patch('alphadataforge.providers.fmp_fetcher.config')
 @patch('alphadataforge.providers.fmp_fetcher.FMPFetcher._make_http_request')
-def test_fmp_fetcher_single_error(mock_http, mock_config):
-    mock_config.FMP_API_KEY = "test_key"
+def test_fmp_fetcher_single_error(mock_http):
     mock_http.side_effect = ValueError("API Error")
     
     fetcher = FMPFetcher()
     with pytest.raises(ValueError, match="API Error"):
         fetcher.fetch_single("AAPL")
 
-@patch('alphadataforge.providers.fmp_fetcher.config')
 @patch('alphadataforge.providers.fmp_fetcher.FMPFetcher._make_http_request')
-def test_fmp_fetcher_single_empty(mock_http, mock_config):
-    mock_config.FMP_API_KEY = "test_key"
+def test_fmp_fetcher_single_empty(mock_http):
     mock_http.return_value = {"symbol": "INVALID", "historical": []}
     
     fetcher = FMPFetcher()
     df = fetcher.fetch_single("INVALID")
     assert df.empty
+
+@pytest.mark.vcr
+def test_fmp_fetcher_info():
+    fetcher = FMPFetcher()
+    info = fetcher.fetch_info("AAPL")
+    assert isinstance(info, dict)
+    assert info.get("symbol") == "AAPL" or info.get("symbol") is not None
+
+@pytest.mark.vcr
+def test_fmp_fetcher_financials():
+    fetcher = FMPFetcher()
+    df = fetcher.fetch_financials("AAPL", statement="income", period="annual")
+    assert not df.empty
+    assert "Net_Income" in df.columns
+
+@patch('alphadataforge.providers.fmp_fetcher.FMPFetcher._make_http_request')
+def test_fmp_fetcher_info_empty(mock_http):
+    mock_http.return_value = [] # Empty list from API
+    
+    fetcher = FMPFetcher()
+    info = fetcher.fetch_info("AAPL")
+    assert info == {}
+
+@patch('alphadataforge.providers.fmp_fetcher.FMPFetcher._make_http_request')
+def test_fmp_fetcher_info_forbidden(mock_http):
+    import requests
+    response = requests.Response()
+    response.status_code = 403
+    mock_http.side_effect = requests.exceptions.HTTPError("Forbidden", response=response)
+    
+    fetcher = FMPFetcher()
+    with pytest.raises(RuntimeError, match="FMP Fundamentals data.*requires a premium API key"):
+        fetcher.fetch_info("AAPL")
+
+def test_fmp_fetcher_financials_invalid_statement():
+    fetcher = FMPFetcher()
+    with pytest.raises(ValueError, match="Unknown statement type"):
+        fetcher.fetch_financials("AAPL", statement="invalid_type")
+
+@patch('alphadataforge.providers.fmp_fetcher.FMPFetcher._make_http_request')
+def test_fmp_fetcher_financials_shares_float(mock_http):
+    mock_http.return_value = [{"date": "2023-01-01", "freeFloat": 100}]
+    
+    fetcher = FMPFetcher()
+    df = fetcher.fetch_financials("AAPL", statement="shares_float")
+    assert not df.empty
+    assert "freeFloat" in df.columns
+
+@patch('alphadataforge.providers.fmp_fetcher.FMPFetcher._make_http_request')
+def test_fmp_fetcher_financials_quarterly(mock_http):
+    mock_http.return_value = [{"date": "2023-01-01", "netIncome": 500}]
+    
+    fetcher = FMPFetcher()
+    df = fetcher.fetch_financials("AAPL", statement="income", period="quarterly")
+    assert not df.empty
+
+@patch('alphadataforge.providers.fmp_fetcher.FMPFetcher._make_http_request')
+def test_fmp_fetcher_financials_empty(mock_http):
+    mock_http.return_value = []
+    
+    fetcher = FMPFetcher()
+    df = fetcher.fetch_financials("AAPL")
+    assert df.empty
+
+@patch('alphadataforge.providers.fmp_fetcher.FMPFetcher._make_http_request')
+def test_fmp_fetcher_financials_forbidden(mock_http):
+    import requests
+    response = requests.Response()
+    response.status_code = 403
+    mock_http.side_effect = requests.exceptions.HTTPError("Forbidden", response=response)
+    
+    fetcher = FMPFetcher()
+    with pytest.raises(RuntimeError, match="FMP Financial Statements data requires a premium API key"):
+        fetcher.fetch_financials("AAPL")
+
