@@ -281,3 +281,23 @@ class TiingoFetcher(BaseDataFetcher):
                 logger.error("Failed to process crypto ticker '%s': %s — skipping.", ticker, e)
 
         return result
+
+    def fetch_info(self, symbol: str) -> dict:
+        """
+        Fetch company profile via Tiingo.
+        """
+        logger.info("Fetching info for %s via Tiingo...", symbol)
+        self._validate_inputs(symbol)
+        try:
+            return self.client.get_ticker_metadata(symbol)
+        except Exception as e:
+            logger.warning("Failed to fetch info for %s from Tiingo: %s", symbol, e)
+            return {}
+
+    def fetch_financials(self, symbol: str, statement: str = "income", period: str = "annual") -> pd.DataFrame:
+        """
+        Tiingo does not provide full standardized financial statements in the free tier
+        (only basic daily fundamentals). Returning empty DataFrame.
+        """
+        logger.warning("Tiingo free tier does not support full %s statements. Returning empty.", statement)
+        return pd.DataFrame()

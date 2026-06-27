@@ -185,7 +185,7 @@ class YFinanceFetcher(BaseDataFetcher):
         self,
         symbol: str,
         statement: str = "income",
-        quarterly: bool = False,
+        period: str = "annual",
     ) -> pd.DataFrame:
         """
         Fetch financial statements for a ticker.
@@ -193,31 +193,39 @@ class YFinanceFetcher(BaseDataFetcher):
         Args:
             symbol:    Ticker symbol
             statement: "income" | "balance" | "cashflow"
-            quarterly: If True, return quarterly data. Default is annual.
+            period:    "annual" | "quarterly".
 
-        Returns: DataFrame with financial line items as rows, periods as columns
+        Returns: Normalized DataFrame with Dates as rows and metrics as columns
         
         Raises:
             ValueError: If statement type is not recognized.
         """
         logger.info(
             "Fetching %s statement for %s (%s)...",
-            statement, symbol, 'quarterly' if quarterly else 'annual',
+            statement, symbol, period,
         )
         self._validate_inputs(symbol)
         ticker = yf.Ticker(symbol)
+        
+        quarterly = (period.lower() == "quarterly")
 
         if statement == "income":
-            return ticker.quarterly_income_stmt if quarterly else ticker.income_stmt
+            df = ticker.quarterly_income_stmt if quarterly else ticker.income_stmt
         elif statement == "balance":
-            return ticker.quarterly_balance_sheet if quarterly else ticker.balance_sheet
+            df = ticker.quarterly_balance_sheet if quarterly else ticker.balance_sheet
         elif statement == "cashflow":
-            return ticker.quarterly_cashflow if quarterly else ticker.cashflow
+            df = ticker.quarterly_cashflow if quarterly else ticker.cashflow
         else:
             raise ValueError(
                 f"Unknown statement type: '{statement}'. "
                 "Choose 'income', 'balance', or 'cashflow'."
             )
+            
+        # yfinance returns dates as columns and metrics as rows. Transpose it.
+        df = df.T
+        
+        # Normalize columns (Net_Income, Total_Revenue, etc.)
+        return self._normalize_financials(df)
 
     # ------------------------------------------------------------------
     # Crypto & Forex — yfinance supports these natively, no extra setup

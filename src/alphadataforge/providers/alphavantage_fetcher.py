@@ -37,6 +37,10 @@ class AlphaVantageFetcher(BaseDataFetcher):
         Raises ValueError for API-level errors (bad symbol, etc.).
         Raises RuntimeError for rate-limit / information notices.
         """
+        # AlphaVantage Free Tier allows max 1 request/second. 
+        # Add automatic delay to prevent immediate rate limit hits when users chain calls.
+        time.sleep(1.2)
+        
         params['apikey'] = self.api_key
         data = self._make_http_request(self.base_url, params=params)
         
@@ -109,7 +113,9 @@ class AlphaVantageFetcher(BaseDataFetcher):
         logger.info("Fetching price for %s (size=%s, adjusted=%s)...", symbol, outputsize, adjusted)
         self._validate_inputs(symbol, start_date, end_date)
         
-        function = "TIME_SERIES_DAILY_ADJUSTED" if adjusted else "TIME_SERIES_DAILY"
+        # TIME_SERIES_DAILY_ADJUSTED is a premium endpoint now.
+        # We always use TIME_SERIES_DAILY and manually adjust it using DIVIDENDS/SPLITS.
+        function = "TIME_SERIES_DAILY"
         time_series_key = "Time Series (Daily)"
         
         # --- Step 1: Fetch price data (will raise on failure) ---
@@ -140,7 +146,6 @@ class AlphaVantageFetcher(BaseDataFetcher):
             # --- 2a: Dividends ---
             try:
                 logger.info("Fetching DIVIDENDS for %s...", symbol)
-                time.sleep(1.2)  # Avoid 1 req/sec limit
                 div_json = self._make_request(function="DIVIDENDS", symbol=symbol)
                 div_data = div_json.get("data", [])
                 if div_data:
@@ -156,7 +161,6 @@ class AlphaVantageFetcher(BaseDataFetcher):
             # --- 2b: Splits ---
             try:
                 logger.info("Fetching SPLITS for %s...", symbol)
-                time.sleep(1.2)  # Avoid 1 req/sec limit
                 split_json = self._make_request(function="SPLITS", symbol=symbol)
                 split_data = split_json.get("data", [])
                 if split_data:
@@ -219,8 +223,8 @@ class AlphaVantageFetcher(BaseDataFetcher):
         Supported functions: OVERVIEW, INCOME_STATEMENT, BALANCE_SHEET, CASH_FLOW, EARNINGS, etc.
         
         Raises:
-            ValueError: If symbol is invalid or API returns an error.
-            RuntimeError: If rate limit is exceeded.
+            InvalidTickerError: If symbol is invalid or API returns an error.
+            RateLimitExceededError: If rate limit is exceeded.
         """
         logger.info("Fetching %s for %s...", function, symbol)
         self._validate_inputs(symbol)
@@ -230,3 +234,92 @@ class AlphaVantageFetcher(BaseDataFetcher):
             symbol=symbol
         )
         return raw_json
+
+    def fetch_info(self, symbol: str) -> dict:
+        """
+        Fetch company profile (fundamentals like sector, industry, mktCap).
+        """
+        logger.info("Fetching info for %s via AlphaVantage...", symbol)
+        return self.fetch_fundamental(symbol, function="OVERVIEW")
+
+    def fetch_financials(self, symbol: str, statement: str = "income", period: str = "annual") -> pd.DataFrame:
+        """
+        Fetch financial statements from AlphaVantage.
+        """
+        logger.info("Fetching %s statement for %s (%s) via AlphaVantage...", statement, symbol, period)
+        
+        endpoint_map = {
+            "income": "INCOME_STATEMENT",
+            "balance": "BALANCE_SHEET",
+            "cashflow": "CASH_FLOW",
+            "shares_outstanding": "SHARES_OUTSTANDING",
+            "earnings": "EARNINGS"
+        }
+        
+        if statement not in endpoint_map:
+            raise ValueError(f"Unknown statement type: '{statement}'. Choose 'income', 'balance', 'cashflow', 'shares_outstanding', or 'earnings'.")
+            
+        function = endpoint_map[statement]
+        raw_json = self.fetch_fundamental(symbol, function=function)
+        
+        # AlphaVantage uses different keys for different endpoints
+        if statement == "shares_outstanding":
+            # SHARES_OUTSTANDING uses a flat "data" list
+            reports = raw_json.get("data", [])
+        else:
+            if statement == "earnings":
+                report_key = "quarterlyEarnings" if period.lower() == "quarterly" else "annualEarnings"
+            else:
+                report_key = "quarterlyReports" if period.lower() == "quarterly" else "annualReports"
+            reports = raw_json.get(report_key, [])
+            
+        if not reports:
+            logger.warning("No %s financial data found for %s in AlphaVantage.", period, symbol)
+            return pd.DataFrame()
+            
+        df = pd.DataFrame(reports)
+        
+        # fiscalDateEnding or date is the index
+        if 'fiscalDateEnding' in df.columns:
+            df.index = pd.to_datetime(df['fiscalDateEnding'])
+            df = df.drop(columns=['fiscalDateEnding'])
+        elif 'date' in df.columns:
+            df.index = pd.to_datetime(df['date'])
+            df = df.drop(columns=['date'])
+            
+        return self._normalize_financials(df)
+
+    def fetch_earnings_calendar(self, horizon: str = "3month", symbol: Optional[str] = None) -> pd.DataFrame:
+        """
+        Fetch earnings calendar.
+        horizon: '3month', '6month', or '12month'
+        symbol: Optional specific symbol to fetch for.
+        """
+        logger.info("Fetching earnings calendar (horizon=%s) via AlphaVantage...", horizon)
+        
+        # AlphaVantage Free Tier allows max 1 request/second.
+        time.sleep(1.2)
+        
+        # This endpoint returns CSV directly, so we use pandas read_csv instead of _make_request
+        url = f"{self.base_url}?function=EARNINGS_CALENDAR&horizon={horizon}&apikey={self.api_key}"
+        if symbol:
+            url += f"&symbol={symbol}"
+            
+        try:
+            df = pd.read_csv(url)
+            # Check for API rate limit (AlphaVantage returns JSON error if rate limited, which breaks read_csv, or returns a 1-row DataFrame with the error)
+            if not df.empty and len(df.columns) == 1 and "Thank you for using Alpha Vantage!" in str(df.iloc[0, 0]):
+                raise RateLimitExceededError(f"AlphaVantage rate limit or notice: {df.iloc[0, 0]}")
+            
+            # The CSV columns are: symbol, name, reportDate, fiscalDateEnding, estimate, currency
+            if 'reportDate' in df.columns:
+                df['reportDate'] = pd.to_datetime(df['reportDate'], errors='coerce')
+            if 'fiscalDateEnding' in df.columns:
+                df['fiscalDateEnding'] = pd.to_datetime(df['fiscalDateEnding'], errors='coerce')
+                
+            return df
+        except Exception as e:
+            if isinstance(e, RateLimitExceededError):
+                raise
+            logger.error("Failed to fetch earnings calendar: %s", e)
+            return pd.DataFrame()

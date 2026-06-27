@@ -96,9 +96,65 @@ class FMPFetcher(BaseDataFetcher):
         """
         return super().fetch_multiple(
             symbols,
-            start_date=start_date,
-            end_date=end_date,
-            outputsize=outputsize,
             adjusted=adjusted,
             **kwargs
         )
+
+    def fetch_info(self, symbol: str) -> dict:
+        """
+        Fetch company profile (fundamentals like sector, industry, mktCap).
+        """
+        logger.info("Fetching info for %s via FMP...", symbol)
+        self._validate_inputs(symbol)
+        
+        # FMP profile API
+        endpoint = f"api/v3/profile/{symbol}"
+        # using the v3 endpoint, but our base url is stable, wait, we need to adjust the base_url or override it
+        # self.base_url is "https://financialmodelingprep.com/stable" but profile is usually "https://financialmodelingprep.com/api/v3/profile/AAPL"
+        # Let's override the url completely here.
+        url = f"https://financialmodelingprep.com/api/v3/profile/{symbol}"
+        params = {'apikey': self.api_key}
+        
+        data = self._make_http_request(url, params=params)
+        if isinstance(data, list) and len(data) > 0:
+            return data[0]
+        return {}
+
+    def fetch_financials(self, symbol: str, statement: str = "income", period: str = "annual") -> pd.DataFrame:
+        """
+        Fetch financial statements from FMP.
+        """
+        logger.info("Fetching %s statement for %s (%s) via FMP...", statement, symbol, period)
+        self._validate_inputs(symbol)
+        
+        # FMP expects period as 'annual' (default/omit) or 'quarter'
+        fmp_period = "quarter" if period.lower() == "quarterly" else "annual"
+        
+        endpoint_map = {
+            "income": "income-statement",
+            "balance": "balance-sheet-statement",
+            "cashflow": "cash-flow-statement"
+        }
+        
+        if statement not in endpoint_map:
+            raise ValueError(f"Unknown statement type: '{statement}'. Choose 'income', 'balance', or 'cashflow'.")
+            
+        url = f"https://financialmodelingprep.com/api/v3/{endpoint_map[statement]}/{symbol}"
+        params = {'apikey': self.api_key, 'limit': 5} # limit 5 for free tier
+        if fmp_period == "quarter":
+            params['period'] = "quarter"
+            
+        data = self._make_http_request(url, params=params)
+        if not data or not isinstance(data, list):
+            logger.warning("No financial data found for %s in FMP.", symbol)
+            return pd.DataFrame()
+            
+        df = pd.DataFrame(data)
+        
+        # FMP returns dates in the 'date' column.
+        if 'date' in df.columns:
+            df.index = pd.to_datetime(df['date'])
+            df = df.drop(columns=['date'])
+            
+        # Normalize and return
+        return self._normalize_financials(df)

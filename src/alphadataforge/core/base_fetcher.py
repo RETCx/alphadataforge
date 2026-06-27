@@ -18,10 +18,17 @@ from .exceptions import RateLimitExceededError
 # Globally patch requests to use sqlite cache (expires after 24 hours)
 # Store cache in the OS's temp directory to avoid cluttering the user's workspace
 cache_path = os.path.join(tempfile.gettempdir(), 'alphadataforge_cache')
+def _filter_responses(response):
+    # Don't cache AlphaVantage rate limit messages (which return HTTP 200)
+    if "Thank you for using Alpha Vantage!" in response.text:
+        return False
+    return True
+
 requests_cache.install_cache(
     cache_name=cache_path, 
     backend='sqlite', 
-    expire_after=86400
+    expire_after=86400,
+    filter_fn=_filter_responses
 )
 
 from ..utils.logger import setup_logger
@@ -46,6 +53,23 @@ class BaseDataFetcher(ABC):
         """
         Fetch data for a single symbol.
         Every provider must implement this method.
+        """
+        pass
+
+    @abstractmethod
+    def fetch_info(self, symbol: str) -> dict:
+        """
+        Fetch company profile and basic information.
+        Must return a dictionary.
+        """
+        pass
+
+    @abstractmethod
+    def fetch_financials(self, symbol: str, statement: str = "income", period: str = "annual") -> pd.DataFrame:
+        """
+        Fetch financial statements (income, balance, cashflow).
+        period: "annual" or "quarterly".
+        Must return a DataFrame with dates as the index.
         """
         pass
     
@@ -141,6 +165,81 @@ class BaseDataFetcher(ABC):
                     "Falling back to pd.to_datetime with errors='coerce'.", e
                 )
                 df.index = pd.to_datetime(df.index, errors='coerce')
+        df.index.name = "Date"
+                
+        return df
+
+    def _normalize_financials(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Standardizes financial statement column names across different providers.
+        Targets: Net_Income, Total_Equity, Shares_Outstanding, Total_Revenue,
+                 Operating_Income, Free_Cash_Flow, Total_Assets, Total_Liabilities.
+        """
+        if df.empty:
+            return df
+            
+        # Common variations for fundamental metrics
+        col_mapping = {
+            # Net Income
+            'netIncome': 'Net_Income',
+            'Net Income': 'Net_Income',
+            'netIncomeLoss': 'Net_Income',
+            'net_income': 'Net_Income',
+            
+            # Total Equity
+            'totalStockholdersEquity': 'Total_Equity',
+            'Total Stockholder Equity': 'Total_Equity',
+            'Stockholders Equity': 'Total_Equity',
+            'totalEquity': 'Total_Equity',
+            'total_equity': 'Total_Equity',
+            'totalShareholderEquity': 'Total_Equity',
+            
+            # Shares Outstanding
+            'sharesOutstanding': 'Shares_Outstanding',
+            'commonStockSharesOutstanding': 'Shares_Outstanding',
+            'Basic Average Shares': 'Shares_Outstanding',
+            'shares_outstanding': 'Shares_Outstanding',
+            'shares_outstanding_basic': 'Shares_Outstanding',
+            
+            # Total Revenue
+            'totalRevenue': 'Total_Revenue',
+            'Total Revenue': 'Total_Revenue',
+            'revenue': 'Total_Revenue',
+            
+            # Operating Income
+            'operatingIncome': 'Operating_Income',
+            'Operating Income': 'Operating_Income',
+            'operating_income': 'Operating_Income',
+            'ebit': 'Operating_Income',
+            'EBIT': 'Operating_Income',
+            
+            # Free Cash Flow
+            'freeCashFlow': 'Free_Cash_Flow',
+            'Free Cash Flow': 'Free_Cash_Flow',
+            'free_cash_flow': 'Free_Cash_Flow',
+            
+            # Total Assets
+            'totalAssets': 'Total_Assets',
+            'Total Assets': 'Total_Assets',
+            'total_assets': 'Total_Assets',
+            
+            # Total Liabilities
+            'totalLiabilities': 'Total_Liabilities',
+            'Total Liabilities': 'Total_Liabilities',
+            'Total Liabilities Net Minority Interest': 'Total_Liabilities',
+            'total_liabilities': 'Total_Liabilities'
+        }
+        
+        # Rename columns if they exist in mapping
+        df = df.rename(columns=col_mapping)
+        
+        # Ensure index is datetime and named 'Date'
+        if not isinstance(df.index, pd.DatetimeIndex):
+            try:
+                # Some APIs return dates in index, some as a column. Assume index here.
+                df.index = pd.to_datetime(df.index)
+            except Exception:
+                pass
         df.index.name = "Date"
                 
         return df
