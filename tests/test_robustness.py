@@ -114,6 +114,8 @@ class TestErrorHandling:
         
         class DummyFetcher(BaseDataFetcher):
             def fetch_single(self, *args, **kwargs): pass
+            def fetch_info(self, *args, **kwargs): pass
+            def fetch_financials(self, *args, **kwargs): pass
             
         fetcher = DummyFetcher()
         
@@ -140,6 +142,8 @@ class TestErrorHandling:
 
         class DummyFetcher(BaseDataFetcher):
             def fetch_single(self, *args, **kwargs): pass
+            def fetch_info(self, *args, **kwargs): pass
+            def fetch_financials(self, *args, **kwargs): pass
 
         fetcher = DummyFetcher()
 
