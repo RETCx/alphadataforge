@@ -24,12 +24,14 @@ def _filter_responses(response):
         return False
     return True
 
-requests_cache.install_cache(
-    cache_name=cache_path, 
-    backend='sqlite', 
-    expire_after=86400,
-    filter_fn=_filter_responses
-)
+import sys
+if "pytest" not in sys.modules and os.environ.get("DISABLE_REQUESTS_CACHE") != "1":
+    requests_cache.install_cache(
+        cache_name=cache_path, 
+        backend='sqlite', 
+        expire_after=86400,
+        filter_fn=_filter_responses
+    )
 
 from ..utils.logger import setup_logger
 
