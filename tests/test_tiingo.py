@@ -8,8 +8,9 @@ from alphadataforge.core.exceptions import ProviderConfigurationError
 def test_tiingo_fetcher_no_key(monkeypatch):
     from alphadataforge.config import settings
     monkeypatch.setattr(settings.config, "TIINGO_API_KEY", "")
+    fetcher = TiingoFetcher()
     with pytest.raises(ProviderConfigurationError, match="TIINGO_API_KEY is not set"):
-        TiingoFetcher()
+        fetcher.fetch_single("AAPL")
 
 @pytest.fixture
 def tiingo_fetcher(monkeypatch):

@@ -72,22 +72,25 @@ class TestValidation:
     def test_apikey_missing_raises_error(self, mock_config):
         from alphadataforge.providers.alphavantage_fetcher import AlphaVantageFetcher
         mock_config.ALPHAVANTAGE_API_KEY = None
+        fetcher = AlphaVantageFetcher()
         with pytest.raises(ProviderConfigurationError, match="ALPHAVANTAGE_API_KEY is not set"):
-            AlphaVantageFetcher()
+            fetcher.fetch_single("AAPL")
 
     @patch('alphadataforge.providers.tiingo_fetcher.config')
     def test_tiingo_apikey_missing_raises_error(self, mock_config):
         from alphadataforge.providers.tiingo_fetcher import TiingoFetcher
         mock_config.TIINGO_API_KEY = None
+        fetcher = TiingoFetcher()
         with pytest.raises(ProviderConfigurationError, match="TIINGO_API_KEY is not set"):
-            TiingoFetcher()
+            fetcher.fetch_single("AAPL")
 
     @patch('alphadataforge.providers.fmp_fetcher.config')
     def test_fmp_apikey_missing_raises_error(self, mock_config):
         from alphadataforge.providers.fmp_fetcher import FMPFetcher
         mock_config.FMP_API_KEY = None
+        fetcher = FMPFetcher()
         with pytest.raises(ProviderConfigurationError, match="FMP_API_KEY is not set"):
-            FMPFetcher()
+            fetcher.fetch_single("AAPL")
 
 class TestErrorHandling:
     """3. Error Handling Test: Validate new fail-fast & skip-on-failure behavior."""
