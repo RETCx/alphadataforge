@@ -2,6 +2,8 @@ import pandas as pd
 from typing import Optional, Dict, Any
 
 from ..providers.yfinance_fetcher import YFinanceFetcher
+from ..providers.fmp_fetcher import FMPFetcher
+from ..providers.alphavantage_fetcher import AlphaVantageFetcher
 from ..utils.logger import setup_logger
 from ..config.settings import config
 
@@ -19,10 +21,8 @@ class Fundamentals:
         if provider_name == "yfinance":
             return YFinanceFetcher()
         elif provider_name == "fmp":
-            from ..providers.fmp_fetcher import FMPFetcher
             return FMPFetcher()
         elif provider_name == "alphavantage":
-            from ..providers.alphavantage_fetcher import AlphaVantageFetcher
             return AlphaVantageFetcher()
         else:
             raise ValueError(f"Unsupported provider: {provider_name}")

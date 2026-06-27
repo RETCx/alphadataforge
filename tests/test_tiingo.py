@@ -2,11 +2,11 @@ import pytest
 from unittest.mock import patch, MagicMock
 import pandas as pd
 from alphadataforge.providers.tiingo_fetcher import TiingoFetcher
+from alphadataforge.config import settings
 from alphadataforge.core.exceptions import ProviderConfigurationError
 
 # Test initialization
 def test_tiingo_fetcher_no_key(monkeypatch):
-    from alphadataforge.config import settings
     monkeypatch.setattr(settings.config, "TIINGO_API_KEY", "")
     fetcher = TiingoFetcher()
     with pytest.raises(ProviderConfigurationError, match="TIINGO_API_KEY is not set"):
@@ -14,7 +14,6 @@ def test_tiingo_fetcher_no_key(monkeypatch):
 
 @pytest.fixture
 def tiingo_fetcher(monkeypatch):
-    from alphadataforge.config import settings
     monkeypatch.setattr(settings.config, "TIINGO_API_KEY", "dummy_key")
     return TiingoFetcher()
 

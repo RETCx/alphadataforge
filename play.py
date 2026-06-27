@@ -1,6 +1,9 @@
+import traceback
 from alphadataforge.providers.yfinance_fetcher import YFinanceFetcher
+from alphadataforge.providers.tiingo_fetcher import TiingoFetcher
 from alphadataforge.data.price import Price
 from alphadataforge.data.fundamental import Fundamentals
+from alphadataforge.config.settings import config
 import pandas as pd
 import time
 import requests_cache
@@ -77,9 +80,7 @@ def play_with_fetchers():
     print("Start testing TiingoFetcher")
     print("=" * 60)
 
-    from alphadataforge.config.settings import config
     if config.TIINGO_API_KEY:
-        from alphadataforge.providers.tiingo_fetcher import TiingoFetcher
         tiingo = TiingoFetcher()
         
         print("\n[11] test Tiingo fetch_single (AAPL)")
@@ -178,8 +179,6 @@ def test_financials_alphaVantage():
         print(df_income)
 
 def test_financials_alphaVantage_new_endpoints():
-    from alphadataforge.data.fundamental import Fundamentals
-
     symbol = 'IBM'
     provider = 'alphavantage'
 
@@ -202,7 +201,6 @@ def test_financials_alphaVantage_new_endpoints():
         print(df_calendar)
     
     except Exception as e:
-        import traceback
         traceback.print_exc()
 
 
@@ -211,7 +209,6 @@ def test_fmp_api():
     print("Testing FMP API with new keys")
     print("=" * 60)
     
-    from alphadataforge.config.settings import config
     if config.FMP_API_KEY:
         try:
             print("\n[1] Fetching AAPL info (FMP)...")

@@ -1,4 +1,5 @@
 import pandas as pd
+import os
 from typing import Optional, List, Dict, Any
 from tiingo import TiingoClient
 from ..core.base_fetcher import BaseDataFetcher
@@ -30,7 +31,6 @@ class TiingoFetcher(BaseDataFetcher):
                     "TIINGO_API_KEY is not set. Please set it in your .env file or environment variables."
                 )
             # Temporarily inject key to OS env for TiingoClient
-            import os
             os.environ['TIINGO_API_KEY'] = self.api_key
             self._client = TiingoClient({'session': True})
         return self._client

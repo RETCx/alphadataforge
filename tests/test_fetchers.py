@@ -1,5 +1,6 @@
 import pytest
 import pandas as pd
+from unittest.mock import patch
 import os
 from alphadataforge.providers.yfinance_fetcher import YFinanceFetcher
 from alphadataforge.providers.tiingo_fetcher import TiingoFetcher
@@ -130,9 +131,6 @@ def test_fetch_forex(yf_fetcher):
 
 def test_price_tiingo_provider():
     """Test Facade API with tiingo provider."""
-    from unittest.mock import patch
-    import pandas as pd
-    
     # We mock fetch_single because we already tested TiingoFetcher in test_tiingo.py
     # This prevents the CI from hitting the real API with a dummy key.
     with patch('alphadataforge.providers.tiingo_fetcher.TiingoFetcher.fetch_single') as mock_fetch:

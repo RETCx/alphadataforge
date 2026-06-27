@@ -6,6 +6,11 @@ from alphadataforge.providers.yfinance_fetcher import YFinanceFetcher
 from alphadataforge.providers.tiingo_fetcher import TiingoFetcher
 from alphadataforge.config.settings import config
 from alphadataforge.core.exceptions import ProviderConfigurationError
+from alphadataforge.core.base_fetcher import BaseDataFetcher
+from alphadataforge.providers.alphavantage_fetcher import AlphaVantageFetcher
+from alphadataforge.providers.fmp_fetcher import FMPFetcher
+import numpy as np
+import requests
 
 @pytest.fixture
 def yf_fetcher():
@@ -38,7 +43,6 @@ class TestNormalization:
         assert isinstance(df.index, pd.DatetimeIndex)
 
     def test_normalize_ohlcv_handles_multiindex_and_nans(self, yf_fetcher):
-        import numpy as np
         # Create a df with MultiIndex and NaNs
         mi = pd.MultiIndex.from_tuples([('close', 'AAPL'), ('open', 'AAPL')])
         df = pd.DataFrame([[np.nan, np.nan], [np.nan, np.nan]], columns=mi)
@@ -70,7 +74,6 @@ class TestValidation:
 
     @patch('alphadataforge.providers.alphavantage_fetcher.config')
     def test_apikey_missing_raises_error(self, mock_config):
-        from alphadataforge.providers.alphavantage_fetcher import AlphaVantageFetcher
         mock_config.ALPHAVANTAGE_API_KEY = None
         fetcher = AlphaVantageFetcher()
         with pytest.raises(ProviderConfigurationError, match="ALPHAVANTAGE_API_KEY is not set"):
@@ -78,7 +81,6 @@ class TestValidation:
 
     @patch('alphadataforge.providers.tiingo_fetcher.config')
     def test_tiingo_apikey_missing_raises_error(self, mock_config):
-        from alphadataforge.providers.tiingo_fetcher import TiingoFetcher
         mock_config.TIINGO_API_KEY = None
         fetcher = TiingoFetcher()
         with pytest.raises(ProviderConfigurationError, match="TIINGO_API_KEY is not set"):
@@ -86,7 +88,6 @@ class TestValidation:
 
     @patch('alphadataforge.providers.fmp_fetcher.config')
     def test_fmp_apikey_missing_raises_error(self, mock_config):
-        from alphadataforge.providers.fmp_fetcher import FMPFetcher
         mock_config.FMP_API_KEY = None
         fetcher = FMPFetcher()
         with pytest.raises(ProviderConfigurationError, match="FMP_API_KEY is not set"):
@@ -112,9 +113,6 @@ class TestErrorHandling:
 
     @patch('requests.get')
     def test_retry_on_rate_limit(self, mock_get):
-        from alphadataforge.core.base_fetcher import BaseDataFetcher
-        import requests
-        
         class DummyFetcher(BaseDataFetcher):
             def fetch_single(self, *args, **kwargs): pass
             def fetch_info(self, *args, **kwargs): pass
@@ -140,9 +138,6 @@ class TestErrorHandling:
     @patch('requests.get')
     def test_invalid_json_raises_value_error(self, mock_get):
         """_make_http_request should raise ValueError when response is not valid JSON."""
-        from alphadataforge.core.base_fetcher import BaseDataFetcher
-        import requests
-
         class DummyFetcher(BaseDataFetcher):
             def fetch_single(self, *args, **kwargs): pass
             def fetch_info(self, *args, **kwargs): pass

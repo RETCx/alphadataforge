@@ -1,11 +1,11 @@
 import pytest
 import pandas as pd
 from alphadataforge.providers.alphavantage_fetcher import AlphaVantageFetcher
+from alphadataforge.config import settings
 
 @pytest.fixture
 def mock_fetcher(monkeypatch):
     """Returns a fetcher with a demo API key injected before construction."""
-    from alphadataforge.config import settings
     monkeypatch.setattr(settings.config, "ALPHAVANTAGE_API_KEY", "demo")
     return AlphaVantageFetcher()
 
@@ -65,8 +65,6 @@ def test_alphavantage_fetch_single_vcr(monkeypatch):
     """
     VCR test that hits the real API once and records it.
     """
-    from alphadataforge.config import settings
-    # Ensure there is an API key to avoid ProviderConfigurationError
     if not settings.config.ALPHAVANTAGE_API_KEY:
         monkeypatch.setattr(settings.config, "ALPHAVANTAGE_API_KEY", "demo")
         
@@ -80,7 +78,6 @@ def test_alphavantage_fetch_single_vcr(monkeypatch):
 
 @pytest.mark.vcr
 def test_alphavantage_fetch_info_vcr(monkeypatch):
-    from alphadataforge.config import settings
     if not settings.config.ALPHAVANTAGE_API_KEY:
         monkeypatch.setattr(settings.config, "ALPHAVANTAGE_API_KEY", "demo")
         
@@ -92,7 +89,6 @@ def test_alphavantage_fetch_info_vcr(monkeypatch):
 
 @pytest.mark.vcr
 def test_alphavantage_fetch_financials_vcr(monkeypatch):
-    from alphadataforge.config import settings
     if not settings.config.ALPHAVANTAGE_API_KEY:
         monkeypatch.setattr(settings.config, "ALPHAVANTAGE_API_KEY", "demo")
         
