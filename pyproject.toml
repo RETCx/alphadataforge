@@ -24,6 +24,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest",
+    "pytest-cov",
+    "pytest-vcr"
 ]
 
 [project.urls]
