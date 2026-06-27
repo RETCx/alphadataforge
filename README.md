@@ -504,6 +504,8 @@ When adding new tests or modifying existing API requests, you will need to gener
 2. Execute `pytest` locally. If a cassette for a specific test does not exist, VCR will automatically perform a real HTTP request and record the sanitized response.
 3. Commit the newly generated `.yaml` files to Git.
 
+### Running Tests & Checking Coverage
+To run the test suite and see a detailed coverage report for all fetchers:
 ```bash
-pytest tests/
+pytest --cov=src/alphadataforge --cov-report=term-missing
 ```
