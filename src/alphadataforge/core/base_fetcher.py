@@ -11,15 +11,13 @@ import json
 import requests
 import requests_cache
 from requests.exceptions import RequestException, HTTPError, Timeout, ConnectionError
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception, before_sleep_log
 import concurrent.futures
 import tempfile
 import os
 
 from .exceptions import RateLimitExceededError
 
-# Globally patch requests to use sqlite cache (expires after 24 hours)
-# Store cache in the OS's temp directory to avoid cluttering the user's workspace
 cache_path = os.path.join(tempfile.gettempdir(), 'alphadataforge_cache')
 def _filter_responses(response):
     # Don't cache AlphaVantage rate limit messages (which return HTTP 200)
@@ -27,25 +25,41 @@ def _filter_responses(response):
         return False
     return True
 
-import sys
-if "pytest" not in sys.modules and os.environ.get("DISABLE_REQUESTS_CACHE") != "1":
-    requests_cache.install_cache(
-        cache_name=cache_path, 
-        backend='sqlite', 
-        expire_after=86400,
-        filter_fn=_filter_responses
-    )
-
 from ..utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
+def _is_retryable_exception(e: BaseException) -> bool:
+    """Determine if an exception should be retried."""
+    if isinstance(e, RateLimitExceededError):
+        return True
+    if isinstance(e, (Timeout, ConnectionError)):
+        return True
+    if isinstance(e, HTTPError):
+        # Retry only on 5xx (Server Error). Do not retry 400-404.
+        if e.response is not None and e.response.status_code >= 500:
+            return True
+        if e.response is not None and e.response.status_code == 429:
+            return True
+    return False
 
 class BaseDataFetcher(ABC):
     """
     Abstract Base Class for all data fetchers.
     Acts as a contract ensuring all fetchers implement the fetch_single method.
     """
+    
+    def __init__(self):
+        import sys
+        if "pytest" not in sys.modules and os.environ.get("DISABLE_REQUESTS_CACHE") != "1":
+            self.session = requests_cache.CachedSession(
+                cache_name=cache_path, 
+                backend='sqlite', 
+                expire_after=86400,
+                filter_fn=_filter_responses
+            )
+        else:
+            self.session = requests.Session()
     
     @abstractmethod
     def fetch_single(
@@ -100,7 +114,7 @@ class BaseDataFetcher(ABC):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=30),
-        retry=retry_if_exception_type((RequestException, Timeout, ConnectionError, RateLimitExceededError)),
+        retry=retry_if_exception(_is_retryable_exception),
         before_sleep=before_sleep_log(logger, log_level=20),  # 20 = INFO
         reraise=True,
     )
@@ -117,7 +131,7 @@ class BaseDataFetcher(ABC):
         if "Accept-Encoding" not in headers:
             headers["Accept-Encoding"] = "gzip, deflate"
             
-        response = requests.get(url, params=params, headers=headers, timeout=30)
+        response = self.session.get(url, params=params, headers=headers, timeout=30)
 
         # Raise specific error for rate-limiting so tenacity can retry it
         if response.status_code == 429:

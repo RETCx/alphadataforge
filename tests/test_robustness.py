@@ -1,6 +1,6 @@
 import pytest
 import pandas as pd
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from alphadataforge.data.price import Price
 from alphadataforge.providers.yfinance_fetcher import YFinanceFetcher
 from alphadataforge.providers.tiingo_fetcher import TiingoFetcher
@@ -119,14 +119,14 @@ class TestErrorHandling:
         # Invalid ticker should be excluded (not present in results)
         assert "INVALID_TICKER_123" not in data
 
-    @patch('requests.get')
-    def test_retry_on_rate_limit(self, mock_get):
+    def test_retry_on_rate_limit(self):
         class DummyFetcher(BaseDataFetcher):
             def fetch_single(self, *args, **kwargs): pass
             def fetch_info(self, *args, **kwargs): pass
             def fetch_financials(self, *args, **kwargs): pass
             
         fetcher = DummyFetcher()
+        fetcher.session.get = MagicMock()
         
         # Mock requests.get to return 429 then 200
         response_429 = requests.Response()
@@ -136,15 +136,14 @@ class TestErrorHandling:
         response_200.status_code = 200
         response_200._content = b'{"success": true}'
         
-        mock_get.side_effect = [response_429, response_200]
+        fetcher.session.get.side_effect = [response_429, response_200]
         
         # This should succeed after 1 retry
         result = fetcher._make_http_request("http://dummy")
         assert result == {"success": True}
-        assert mock_get.call_count == 2
+        assert fetcher.session.get.call_count == 2
 
-    @patch('requests.get')
-    def test_invalid_json_raises_value_error(self, mock_get):
+    def test_invalid_json_raises_value_error(self):
         """_make_http_request should raise ValueError when response is not valid JSON."""
         class DummyFetcher(BaseDataFetcher):
             def fetch_single(self, *args, **kwargs): pass
@@ -152,11 +151,12 @@ class TestErrorHandling:
             def fetch_financials(self, *args, **kwargs): pass
 
         fetcher = DummyFetcher()
+        fetcher.session.get = MagicMock()
 
         response_ok = requests.Response()
         response_ok.status_code = 200
         response_ok._content = b'<html>Not JSON</html>'
-        mock_get.return_value = response_ok
+        fetcher.session.get.return_value = response_ok
 
         with pytest.raises(ValueError, match="Invalid JSON response from API"):
             fetcher._make_http_request("http://dummy")

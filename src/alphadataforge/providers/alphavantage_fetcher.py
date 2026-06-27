@@ -2,6 +2,7 @@ import pandas as pd
 from typing import Optional, List, Dict
 
 import time
+import threading
 from ..utils.finance_math import calculate_adjusted_prices
 
 from ..core.base_fetcher import BaseDataFetcher
@@ -19,10 +20,14 @@ class AlphaVantageFetcher(BaseDataFetcher):
     Supports: EOD stock price.
     
     Requires ALPHAVANTAGE_API_KEY environment variable.
-    Free tier limit: 25 requests per day.
+    Free tier: 25 requests/day.
     """
+    
+    # Class-level lock to ensure only one thread makes an AlphaVantage request at a time
+    _rate_limit_lock = threading.Lock()
 
     def __init__(self, api_key: Optional[str] = None):
+        super().__init__()
         self.api_key = api_key or config.ALPHAVANTAGE_API_KEY
         self.base_url = Endpoints.AlphaVantage.BASE_URL
 
@@ -38,13 +43,15 @@ class AlphaVantageFetcher(BaseDataFetcher):
         Raises ValueError for API-level errors (bad symbol, etc.).
         Raises RuntimeError for rate-limit / information notices.
         """
-        # AlphaVantage Free Tier allows max 1 request/second. 
-        # Add automatic delay to prevent immediate rate limit hits when users chain calls.
-        time.sleep(1.2)
+        # AlphaVantage Free Tier allows max 1 request/second.
+        # Add automatic delay and thread lock to prevent concurrent rate limit hits.
+        with self._rate_limit_lock:
+            time.sleep(1.2)
+            
+            self._require_api_key()
+            params['apikey'] = self.api_key
+            data = self._make_http_request(self.base_url, params=params)
         
-        self._require_api_key()
-        params['apikey'] = self.api_key
-        data = self._make_http_request(self.base_url, params=params)
         
         # Alpha Vantage returns an error message in the JSON payload instead of HTTP status sometimes
         if "Error Message" in data:
@@ -194,17 +201,16 @@ class AlphaVantageFetcher(BaseDataFetcher):
         **kwargs
     ) -> Dict[str, pd.DataFrame]:
         """
-        Fetch price data for multiple symbols.
-        Alpha Vantage does not have a batch endpoint for free tier, so we must loop.
-        WARNING: This easily consumes the 25 req/day limit.
-        Symbols that fail are logged and excluded from the result.
+        Fetch price data for multiple symbols concurrently using ThreadPoolExecutor.
         """
-        logger.warning(
-            "Batch fetching %d symbols from AlphaVantage. "
-            "WARNING: This uses ~%d API credits!",
-            len(symbols), len(symbols)
-        )
-        
+        calls_per_symbol = 3 if adjusted else 1
+        total_calls = len(symbols) * calls_per_symbol
+        if total_calls > 25:
+            logger.warning(
+                "AlphaVantage quota warning: Fetching %d symbols (adjusted=%s) requires %d API calls. "
+                "The free tier limits you to 25 requests per day. This operation may fail.",
+                len(symbols), adjusted, total_calls
+            )
         # Delegate to BaseDataFetcher.fetch_multiple which handles per-symbol
         # error isolation and logging automatically.
         return super().fetch_multiple(

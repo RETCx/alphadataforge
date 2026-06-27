@@ -20,6 +20,7 @@ class TiingoFetcher(BaseDataFetcher):
     """
 
     def __init__(self, api_key: Optional[str] = None):
+        super().__init__()
         self.api_key = api_key or config.TIINGO_API_KEY
         self._client = None
 
