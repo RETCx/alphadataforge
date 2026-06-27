@@ -65,6 +65,9 @@ class TiingoFetcher(BaseDataFetcher):
         logger.info("Fetching price for %s (%s)...", symbol, frequency)
         self._validate_inputs(symbol, start_date, end_date)
         
+        # Pop adjusted if present, since Tiingo returns adj natively
+        kwargs.pop("adjusted", None)
+        
         df = self.client.get_dataframe(
             tickers=symbol,
             startDate=start_date,

@@ -46,13 +46,24 @@ class YFinanceFetcher(BaseDataFetcher):
         logger.info("Fetching price for %s (%s)...", symbol, interval)
         self._validate_inputs(symbol, start_date, end_date)
         
+        # Pop adjusted if present, since yf.download doesn't accept it
+        kwargs.pop("adjusted", None)
+        
+        # Force auto_adjust=False to get raw Close and Adj Close separately
+        # This allows our backfill_adjusted_columns to generate full Adj OHLC
+        download_kwargs = {
+            "auto_adjust": False,
+            "multi_level_index": False
+        }
+        download_kwargs.update(kwargs)
+        
         df = yf.download(
             tickers=symbol,
             start=start_date,
             end=end_date,
             interval=interval,
             progress=False,
-            **kwargs
+            **download_kwargs
         )
         
         if df.empty:

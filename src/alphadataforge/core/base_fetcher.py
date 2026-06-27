@@ -26,6 +26,7 @@ def _filter_responses(response):
     return True
 
 from ..utils.logger import setup_logger
+from ..utils.finance_math import backfill_adjusted_columns
 
 logger = setup_logger(__name__)
 
@@ -213,6 +214,9 @@ class BaseDataFetcher(ABC):
                 )
                 df.index = pd.to_datetime(df.index, errors='coerce')
         df.index.name = "Date"
+        
+        # Automatically backfill 'Adj Open', 'Adj High', 'Adj Low' if we only have 'Adj Close'
+        df = backfill_adjusted_columns(df)
                 
         return df
 

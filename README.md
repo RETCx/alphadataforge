@@ -76,7 +76,7 @@ df = Price.get("TSLA", provider="tiingo", start_date="2022-01-01")
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `symbol` | `str` or `List[str]` | *required* | Ticker(s) e.g. `"AAPL"` or `["AAPL", "MSFT"]` |
-| `provider` | `str` | `"yfinance"` | `"yfinance"`, `"alphavantage"`, `"tiingo"`, `"fmp"` |
+| `provider` | `str` | `"yfinance"` | `"yfinance"`, `"alphavantage"`, `"tiingo"`, `"fmp"`, `"hybrid_av_tiingo"` |
 | `start_date` | `str` | `None` | `"YYYY-MM-DD"` |
 | `end_date` | `str` | `None` | `"YYYY-MM-DD"` |
 | `**provider_params` | `dict` | `{}` | Extra params passed to the underlying provider (see per-provider sections below) |
@@ -97,6 +97,47 @@ df = Price.get("TSLA", provider="tiingo", start_date="2022-01-01")
 | `Adj Low` | float | Adjusted daily low (if `adjusted=True`) |
 | `Adj Close` | float | Dividend & split adjusted close (if available or `adjusted=True`) |
 | `Adj Volume` | float | Split-adjusted volume (if `adjusted=True`) |
+
+> **Note on Adjusted Prices:** If `adjusted=True` is passed (or if the provider returns it natively), AlphaDataForge guarantees the presence of full Adjusted OHLC columns (`Adj Open`, `Adj High`, `Adj Low`, `Adj Close`). For providers like YFinance that only natively return `Adj Close`, our pipeline automatically backfills the remaining adjusted columns using the ratio of `Adj Close` / `Close`.
+
+### Hybrid Provider (`hybrid_av_tiingo`)
+AlphaDataForge offers a special `hybrid_av_tiingo` provider for optimal data quality and API usage:
+- **Raw Prices:** Fetched from Alpha Vantage (deepest historical data, 20+ years).
+- **Dividends & Splits:** Fetched from Tiingo (highly accurate, saves Alpha Vantage premium limits).
+- **Processing:** Fully adjusted prices are calculated locally via our `finance_math` engine.
+
+### Cross-Provider Adjusted Price Comparison
+To ensure data consistency across all platforms, we tested the fully adjusted prices for `AAPL` on `2026-05-05` across all available providers and the hybrid engine. The results perfectly align:
+
+**Adjusted Close:**
+- `yfinance`: 283.9184
+- `tiingo`: 283.9181
+- `fmp`: 283.9200
+- `alphavantage`: 283.9184
+- `hybrid_av_tiingo`: 283.9184
+
+**Adjusted Open:**
+- `yfinance`: 276.6751
+- `tiingo`: 276.6698
+- `fmp`: 276.6800
+- `alphavantage`: 276.6701
+- `hybrid_av_tiingo`: 276.6701
+
+### Multi-Provider Consensus & Comparison
+
+AlphaDataForge provides built-in tools to fetch from multiple providers concurrently and either compare them side-by-side or calculate a consensus (mean/median) to automatically filter out bad data.
+
+```python
+# 1. Compare across all providers (Returns a MultiIndex DataFrame)
+multi_df = Price.compare("AAPL", start_date="2023-01-01", provider_params={"adjusted": True})
+
+# Access specific provider
+yfinance_close = multi_df["yfinance"]["Close"]
+
+# 2. Consensus Price (Calculates the median across all providers)
+consensus_df = Price.consensus("AAPL", start_date="2023-01-01", method="median")
+print(consensus_df.head())
+```
 
 ---
 

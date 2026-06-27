@@ -35,8 +35,14 @@ def calculate_adjusted_prices(
     df = df.sort_index(ascending=True)
     
     # 1. Join Dividends and Splits onto the main DataFrame
+    # Ensure df index is tz-naive
+    if df.index.tz is not None:
+        df.index = df.index.tz_localize(None)
+
     df['Dividend'] = 0.0
     if dividends_df is not None and not dividends_df.empty:
+        if dividends_df.index.tz is not None:
+            dividends_df.index = dividends_df.index.tz_localize(None)
         # Align dividends by date
         div_series = dividends_df['Dividend'] if 'Dividend' in dividends_df.columns else dividends_df.iloc[:, 0]
         divs = div_series.groupby(dividends_df.index).sum()
@@ -44,6 +50,8 @@ def calculate_adjusted_prices(
         
     df['SplitFactor'] = 1.0
     if splits_df is not None and not splits_df.empty:
+        if splits_df.index.tz is not None:
+            splits_df.index = splits_df.index.tz_localize(None)
         # Align splits by date (if multiple splits on same day, multiply them)
         split_series = splits_df['SplitFactor'] if 'SplitFactor' in splits_df.columns else splits_df.iloc[:, 0]
         splits = split_series.groupby(splits_df.index).prod()
@@ -90,4 +98,28 @@ def calculate_adjusted_prices(
     drop_cols = ['Dividend', 'SplitFactor', 'CumSplit', 'SplitAdjClose', 'DivFactor', 'CumDiv', 'AdjFactor']
     df = df.drop(columns=drop_cols)
     
+    return df
+
+def backfill_adjusted_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Backfills 'Adj Open', 'Adj High', 'Adj Low' by calculating the ratio of 'Adj Close' / 'Close'.
+    This ensures a consistent Full Adjusted OHLC schema across providers like YFinance or FMP 
+    that only natively return 'Adj Close'.
+    """
+    if df.empty:
+        return df
+        
+    df = df.copy()
+    
+    if 'Close' in df.columns and 'Adj Close' in df.columns:
+        # Calculate ratio, defaulting to 1.0 where Close is 0 or NaN
+        ratio = np.where(df['Close'] != 0, df['Adj Close'] / df['Close'], 1.0)
+        
+        if 'Open' in df.columns and 'Adj Open' not in df.columns:
+            df['Adj Open'] = df['Open'] * ratio
+        if 'High' in df.columns and 'Adj High' not in df.columns:
+            df['Adj High'] = df['High'] * ratio
+        if 'Low' in df.columns and 'Adj Low' not in df.columns:
+            df['Adj Low'] = df['Low'] * ratio
+            
     return df
