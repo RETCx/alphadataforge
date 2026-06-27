@@ -54,7 +54,7 @@ class Fundamentals:
         
         Args:
             symbol: Ticker symbol (e.g., "AAPL").
-            statement: "income", "balance", "cashflow", "shares_outstanding", or "earnings".
+            statement: "income", "balance", "cashflow", "shares_outstanding", "earnings", or "shares_float".
             period: "annual" (default) or "quarterly".
             provider: "yfinance" (default), "fmp", or "alphavantage".
             

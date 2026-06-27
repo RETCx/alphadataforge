@@ -1,9 +1,11 @@
 import pandas as pd
+import requests
 from typing import Optional, List, Dict, Any
 
 from ..core.base_fetcher import BaseDataFetcher
 from ..core.exceptions import ProviderConfigurationError
 from ..config.settings import config
+from ..config.endpoints import Endpoints
 from ..utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -14,21 +16,22 @@ class FMPFetcher(BaseDataFetcher):
     Handles EOD prices, splits, and dividends.
     """
     
-    def __init__(self):
+    def __init__(self, api_key: Optional[str] = None):
         super().__init__()
-        self.api_key = config.FMP_API_KEY
-        self.base_url = "https://financialmodelingprep.com/stable"
+        self.api_key = api_key or config.FMP_API_KEY
+        self.base_url = Endpoints.FMP.BASE_URL
 
+    def _require_api_key(self) -> None:
         if not self.api_key:
             raise ProviderConfigurationError(
-                "FMP_API_KEY is not set. "
-                "Please set it in your .env file or environment variables."
+                "FMP_API_KEY is not set. Please set it in your .env file or environment variables."
             )
 
     def _make_request(self, endpoint: str, **params) -> dict:
         """
         Executes HTTP GET request to FMP API.
         """
+        self._require_api_key()
         params['apikey'] = self.api_key
         url = f"{self.base_url}/{endpoint}"
         return self._make_http_request(url, params=params)
@@ -60,8 +63,12 @@ class FMPFetcher(BaseDataFetcher):
 
         # Use the appropriate endpoint based on 'adjusted' flag
         # 'dividend-adjusted' = Fully adjusted (splits + dividends)
-        # 'non-split-adjusted' = Completely raw (as-traded, no splits, no dividends)
-        endpoint = "historical-price-eod/dividend-adjusted" if adjusted else "historical-price-eod/non-split-adjusted"
+        # 'price_adjusted' = Fully adjusted (splits + dividends)
+        # 'price_raw' = Standard price (split-adjusted only)
+        if adjusted:
+            endpoint = Endpoints.FMP.PATHS["price_adjusted"]
+        else:
+            endpoint = Endpoints.FMP.PATHS["price_raw"]
         
         raw_json = self._make_request(endpoint, **params)
             
@@ -108,17 +115,22 @@ class FMPFetcher(BaseDataFetcher):
         self._validate_inputs(symbol)
         
         # FMP profile API
-        endpoint = f"api/v3/profile/{symbol}"
         # using the v3 endpoint, but our base url is stable, wait, we need to adjust the base_url or override it
         # self.base_url is "https://financialmodelingprep.com/stable" but profile is usually "https://financialmodelingprep.com/api/v3/profile/AAPL"
         # Let's override the url completely here.
-        url = f"https://financialmodelingprep.com/api/v3/profile/{symbol}"
-        params = {'apikey': self.api_key}
+        url = f"{self.base_url}/{Endpoints.FMP.PATHS['profile']}"
+        params = {'apikey': self.api_key, 'symbol': symbol}
         
-        data = self._make_http_request(url, params=params)
-        if isinstance(data, list) and len(data) > 0:
-            return data[0]
-        return {}
+        try:
+            
+            data = self._make_http_request(url, params=params)
+            if isinstance(data, list) and len(data) > 0:
+                return data[0]
+            return {}
+        except requests.exceptions.HTTPError as e:
+            if e.response is not None and e.response.status_code == 403:
+                raise RuntimeError("FMP Fundamentals data (like company profile) requires a premium API key.") from e
+            raise
 
     def fetch_financials(self, symbol: str, statement: str = "income", period: str = "annual") -> pd.DataFrame:
         """
@@ -130,21 +142,29 @@ class FMPFetcher(BaseDataFetcher):
         # FMP expects period as 'annual' (default/omit) or 'quarter'
         fmp_period = "quarter" if period.lower() == "quarterly" else "annual"
         
-        endpoint_map = {
-            "income": "income-statement",
-            "balance": "balance-sheet-statement",
-            "cashflow": "cash-flow-statement"
-        }
+        endpoint_map = Endpoints.FMP.PATHS
+        valid_statements = {"income", "balance", "cashflow", "shares_float"}
         
-        if statement not in endpoint_map:
-            raise ValueError(f"Unknown statement type: '{statement}'. Choose 'income', 'balance', or 'cashflow'.")
+        if statement not in valid_statements:
+            raise ValueError(f"Unknown statement type: '{statement}'. Choose 'income', 'balance', 'cashflow', or 'shares_float'.")
             
-        url = f"https://financialmodelingprep.com/api/v3/{endpoint_map[statement]}/{symbol}"
-        params = {'apikey': self.api_key, 'limit': 5} # limit 5 for free tier
-        if fmp_period == "quarter":
-            params['period'] = "quarter"
+        if statement == "shares_float":
+            url = f"{self.base_url}/{Endpoints.FMP.PATHS['shares_float']}"
+            params = {'apikey': self.api_key, 'symbol': symbol}
+        else:
+            url = f"{self.base_url}/{endpoint_map[statement]}"
+            params = {'apikey': self.api_key, 'symbol': symbol, 'limit': 5} # limit 5 for free tier
+            if fmp_period == "quarter":
+                params['period'] = "quarter"
+
             
-        data = self._make_http_request(url, params=params)
+        try:
+            data = self._make_http_request(url, params=params)
+        except requests.exceptions.HTTPError as e:
+            if e.response is not None and e.response.status_code == 403:
+                raise RuntimeError(f"FMP Financial Statements data requires a premium API key.") from e
+            raise
+            
         if not data or not isinstance(data, list):
             logger.warning("No financial data found for %s in FMP.", symbol)
             return pd.DataFrame()
@@ -157,4 +177,7 @@ class FMPFetcher(BaseDataFetcher):
             df = df.drop(columns=['date'])
             
         # Normalize and return
+        if statement == "shares_float":
+            # Just return the DataFrame directly for shares_float
+            return df
         return self._normalize_financials(df)

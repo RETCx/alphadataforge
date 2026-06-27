@@ -7,6 +7,7 @@ from ..utils.finance_math import calculate_adjusted_prices
 from ..core.base_fetcher import BaseDataFetcher
 from ..core.exceptions import ProviderConfigurationError, RateLimitExceededError, InvalidTickerError
 from ..config.settings import config
+from ..config.endpoints import Endpoints
 from ..utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -21,14 +22,14 @@ class AlphaVantageFetcher(BaseDataFetcher):
     Free tier limit: 25 requests per day.
     """
 
-    def __init__(self):
-        self.api_key = config.ALPHAVANTAGE_API_KEY
-        self.base_url = "https://www.alphavantage.co/query"
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = api_key or config.ALPHAVANTAGE_API_KEY
+        self.base_url = Endpoints.AlphaVantage.BASE_URL
 
+    def _require_api_key(self) -> None:
         if not self.api_key:
             raise ProviderConfigurationError(
-                "ALPHAVANTAGE_API_KEY is not set. "
-                "Please set it in your .env file or environment variables."
+                "ALPHAVANTAGE_API_KEY is not set. Please set it in your .env file or environment variables."
             )
 
     def _make_request(self, **params) -> dict:
@@ -41,6 +42,7 @@ class AlphaVantageFetcher(BaseDataFetcher):
         # Add automatic delay to prevent immediate rate limit hits when users chain calls.
         time.sleep(1.2)
         
+        self._require_api_key()
         params['apikey'] = self.api_key
         data = self._make_http_request(self.base_url, params=params)
         
@@ -115,7 +117,7 @@ class AlphaVantageFetcher(BaseDataFetcher):
         
         # TIME_SERIES_DAILY_ADJUSTED is a premium endpoint now.
         # We always use TIME_SERIES_DAILY and manually adjust it using DIVIDENDS/SPLITS.
-        function = "TIME_SERIES_DAILY"
+        function = Endpoints.AlphaVantage.FUNCTIONS["price_daily"]
         time_series_key = "Time Series (Daily)"
         
         # --- Step 1: Fetch price data (will raise on failure) ---
@@ -146,8 +148,8 @@ class AlphaVantageFetcher(BaseDataFetcher):
             # --- 2a: Dividends ---
             try:
                 logger.info("Fetching DIVIDENDS for %s...", symbol)
-                div_json = self._make_request(function="DIVIDENDS", symbol=symbol)
-                div_data = div_json.get("data", [])
+                raw_json = self._make_request(function=Endpoints.AlphaVantage.FUNCTIONS["dividends"], symbol=symbol)
+                div_data = raw_json.get("data", [])
                 if div_data:
                     div_df = pd.DataFrame(div_data)
                     div_df['Dividend'] = pd.to_numeric(div_df['amount'], errors='coerce')
@@ -161,8 +163,8 @@ class AlphaVantageFetcher(BaseDataFetcher):
             # --- 2b: Splits ---
             try:
                 logger.info("Fetching SPLITS for %s...", symbol)
-                split_json = self._make_request(function="SPLITS", symbol=symbol)
-                split_data = split_json.get("data", [])
+                raw_json = self._make_request(function=Endpoints.AlphaVantage.FUNCTIONS["splits"], symbol=symbol)
+                split_data = raw_json.get("data", [])
                 if split_data:
                     split_df = pd.DataFrame(split_data)
                     split_df['SplitFactor'] = pd.to_numeric(split_df['split_factor'], errors='coerce')
@@ -240,7 +242,7 @@ class AlphaVantageFetcher(BaseDataFetcher):
         Fetch company profile (fundamentals like sector, industry, mktCap).
         """
         logger.info("Fetching info for %s via AlphaVantage...", symbol)
-        return self.fetch_fundamental(symbol, function="OVERVIEW")
+        return self.fetch_fundamental(symbol, function=Endpoints.AlphaVantage.FUNCTIONS["overview"])
 
     def fetch_financials(self, symbol: str, statement: str = "income", period: str = "annual") -> pd.DataFrame:
         """
@@ -248,15 +250,10 @@ class AlphaVantageFetcher(BaseDataFetcher):
         """
         logger.info("Fetching %s statement for %s (%s) via AlphaVantage...", statement, symbol, period)
         
-        endpoint_map = {
-            "income": "INCOME_STATEMENT",
-            "balance": "BALANCE_SHEET",
-            "cashflow": "CASH_FLOW",
-            "shares_outstanding": "SHARES_OUTSTANDING",
-            "earnings": "EARNINGS"
-        }
+        endpoint_map = Endpoints.AlphaVantage.FUNCTIONS
+        valid_statements = {"income", "balance", "cashflow", "shares_outstanding", "earnings"}
         
-        if statement not in endpoint_map:
+        if statement not in valid_statements:
             raise ValueError(f"Unknown statement type: '{statement}'. Choose 'income', 'balance', 'cashflow', 'shares_outstanding', or 'earnings'.")
             
         function = endpoint_map[statement]

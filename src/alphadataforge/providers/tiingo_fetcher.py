@@ -18,17 +18,22 @@ class TiingoFetcher(BaseDataFetcher):
     Free tier: 500 requests/hr, EOD prices + news headlines.
     """
 
-    def __init__(self):
-        self.api_key = config.TIINGO_API_KEY
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = api_key or config.TIINGO_API_KEY
+        self._client = None
 
-        if not self.api_key:
-            raise ProviderConfigurationError(
-                "TIINGO_API_KEY is not set. "
-                "Please set it in your .env file or environment variables."
-            )
-
-        # TiingoClient automatically reads TIINGO_API_KEY from environment
-        self.client = TiingoClient({'session': True})
+    @property
+    def client(self) -> TiingoClient:
+        if not self._client:
+            if not self.api_key:
+                raise ProviderConfigurationError(
+                    "TIINGO_API_KEY is not set. Please set it in your .env file or environment variables."
+                )
+            # Temporarily inject key to OS env for TiingoClient
+            import os
+            os.environ['TIINGO_API_KEY'] = self.api_key
+            self._client = TiingoClient({'session': True})
+        return self._client
         
 
     # ------------------------------------------------------------------
