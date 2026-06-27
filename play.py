@@ -1,5 +1,6 @@
 from alphadataforge.providers.yfinance_fetcher import YFinanceFetcher
 from alphadataforge.data.price import Price
+from alphadataforge.data.fundamental import Fundamentals
 import pandas as pd
 import time
 import requests_cache
@@ -135,6 +136,77 @@ def test_performance():
         print(f"  - Caching made it {run1_time / run2_time:.1f}x faster!")
     print(f"  - Async fetching (ThreadPool) allowed {len(symbols)} network requests in just {run1_time:.2f}s!")
 
+def test_fundamentals():
+    print("\n" + "=" * 60)
+    print("Testing Fundamentals Facade API")
+    print("=" * 60)
+    
+    print("\n[1] Fetching AAPL info (YFinance)...")
+    info = Fundamentals.get_info("AAPL", provider="yfinance")
+    print(f"  - Sector: {info.get('sector')}")
+    print(f"  - Industry: {info.get('industry')}")
+    print(f"  - Market Cap: {info.get('marketCap')}")
+    
+    print("\n[2] Fetching AAPL Income Statement (YFinance)...")
+    df_income = Fundamentals.get_financials("AAPL", statement="income", period="annual", provider="yfinance")
+    # Show standardized columns if available
+    cols_to_show = [c for c in ['Net_Income', 'Total_Revenue', 'Operating_Income'] if c in df_income.columns]
+    if cols_to_show:
+        print(df_income[cols_to_show].head(3))
+    else:
+        print(df_income.iloc[:3, :3])
+
+def test_financials_alphaVantage():
+    print("\n" + "=" * 60)
+    print("Testing Fundamentals Facade API")
+    print("=" * 60)
+    
+    print("\n[1] Fetching AAPL info (AlphaVantage)...")
+    info = Fundamentals.get_info("AAPL", provider="alphavantage")
+    print(f"  - Sector: {info.get('sector')}")
+    print(f"  - Industry: {info.get('industry')}")
+    print(f"  - Market Cap: {info.get('marketCap')}")
+    
+    print("\n[2] Fetching AAPL Income Statement (AlphaVantage)...")
+    df_income = Fundamentals.get_financials("AAPL", statement="income", period="quarterly", provider="alphavantage")
+    # Show standardized columns if available
+    cols_to_show = [c for c in ['Net_Income', 'Total_Revenue', 'Operating_Income'] if c in df_income.columns]
+    if cols_to_show:
+        print(df_income[cols_to_show])
+    else:
+        print(df_income)
+
+def test_financials_alphaVantage_new_endpoints():
+    from alphadataforge.data.fundamental import Fundamentals
+
+    symbol = 'IBM'
+    provider = 'alphavantage'
+
+    try:
+        print("Fetching raw shares outstanding...")
+        fetcher = Fundamentals._get_provider(provider)
+        raw = fetcher.fetch_fundamental(symbol, "SHARES_OUTSTANDING")
+        print(raw.keys())
+        df_shares = Fundamentals.get_financials(symbol, statement="shares_outstanding", period="quarterly", provider=provider)
+        print(df_shares)
+
+        print("\nFetching earnings...")
+        df_earnings = Fundamentals.get_financials(symbol, statement="earnings", period="quarterly", provider=provider)
+        print(df_earnings)
+
+        print("\nFetching earnings calendar...")
+        df_calendar = Fundamentals.get_earnings_calendar(horizon="3month", symbol=symbol, provider=provider)
+        print(df_calendar)
+    
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+
+
 if __name__ == "__main__":
-    # play_with_fetchers()
+    play_with_fetchers()
     test_performance()
+    test_fundamentals()
+    test_financials_alphaVantage_new_endpoints()
+
+    
