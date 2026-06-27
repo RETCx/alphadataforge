@@ -17,6 +17,7 @@ try:
     VCRHTTPResponse._request_url = _request_url_patch
 except ImportError:
     pass
+import os
 @pytest.fixture(scope="module")
 def vcr_config():
     """
@@ -24,6 +25,7 @@ def vcr_config():
     from cassettes before saving them to disk.
     """
     return {
+        "record_mode": os.environ.get("VCR_RECORD_MODE", "once"),
         # Hide query parameters like ?apikey=YOUR_KEY
         "filter_query_parameters": ["apikey", "token", "api_key"],
         

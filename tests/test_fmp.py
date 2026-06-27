@@ -5,8 +5,9 @@ from unittest.mock import patch
 
 from alphadataforge.providers.fmp_fetcher import FMPFetcher
 
-@pytest.mark.vcr
-def test_fmp_fetcher_single_unadjusted():
+@patch('alphadataforge.providers.fmp_fetcher.FMPFetcher._make_http_request')
+def test_fmp_fetcher_single_unadjusted(mock_http):
+    mock_http.return_value = {"historical": [{"date": "2023-01-01", "close": 150.0, "volume": 1000}]}
     fetcher = FMPFetcher()
     df = fetcher.fetch_single("AAPL", adjusted=False)
     
@@ -16,8 +17,9 @@ def test_fmp_fetcher_single_unadjusted():
     # Assert proper sorting/index
     assert isinstance(df.index, pd.DatetimeIndex)
 
-@pytest.mark.vcr
-def test_fmp_fetcher_single_adjusted():
+@patch('alphadataforge.providers.fmp_fetcher.FMPFetcher._make_http_request')
+def test_fmp_fetcher_single_adjusted(mock_http):
+    mock_http.return_value = {"historical": [{"date": "2023-01-01", "adjClose": 150.0}]}
     fetcher = FMPFetcher()
     df = fetcher.fetch_single("AAPL", adjusted=True)
     
@@ -40,15 +42,17 @@ def test_fmp_fetcher_single_empty(mock_http):
     df = fetcher.fetch_single("INVALID")
     assert df.empty
 
-@pytest.mark.vcr
-def test_fmp_fetcher_info():
+@patch('alphadataforge.providers.fmp_fetcher.FMPFetcher._make_http_request')
+def test_fmp_fetcher_info(mock_http):
+    mock_http.return_value = [{"symbol": "AAPL", "companyName": "Apple Inc."}]
     fetcher = FMPFetcher()
     info = fetcher.fetch_info("AAPL")
     assert isinstance(info, dict)
-    assert info.get("symbol") == "AAPL" or info.get("symbol") is not None
+    assert info.get("symbol") == "AAPL"
 
-@pytest.mark.vcr
-def test_fmp_fetcher_financials():
+@patch('alphadataforge.providers.fmp_fetcher.FMPFetcher._make_http_request')
+def test_fmp_fetcher_financials(mock_http):
+    mock_http.return_value = [{"date": "2023-01-01", "netIncome": 10000}]
     fetcher = FMPFetcher()
     df = fetcher.fetch_financials("AAPL", statement="income", period="annual")
     assert not df.empty

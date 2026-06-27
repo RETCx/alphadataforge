@@ -5,6 +5,7 @@ import random as rd
 import time
 from datetime import datetime
 import gzip
+import zlib
 import json
 
 import requests
@@ -110,6 +111,12 @@ class BaseDataFetcher(ABC):
         Raises HTTPError for non-retryable server errors (4xx).
         """
         logger.debug("GET %s params=%s", url, list((params or {}).keys()))
+        
+        headers = headers or {}
+        # Force gzip/deflate to avoid unsupported Brotli (br) encoding
+        if "Accept-Encoding" not in headers:
+            headers["Accept-Encoding"] = "gzip, deflate"
+            
         response = requests.get(url, params=params, headers=headers, timeout=30)
 
         # Raise specific error for rate-limiting so tenacity can retry it
@@ -119,14 +126,32 @@ class BaseDataFetcher(ABC):
 
         response.raise_for_status()
         try:
-            # Handle gzip-compressed responses
-            if response.content[:2] == b'\x1f\x8b':  # gzip magic bytes
-                content = gzip.decompress(response.content)
-                return json.loads(content)
+            # requests usually auto-decompresses; prefer response.json first
             return response.json()
-        except (ValueError, gzip.BadGzipFile) as e:
-            logger.error("Failed to parse JSON response from %s. Snippet: %s", url, response.text[:200])
-            raise ValueError(f"Invalid JSON response from API: {e}")
+        except ValueError as first_err:
+            raw = response.content or b""
+            enc = (response.headers.get("Content-Encoding") or "").lower()
+
+            try:
+                if "gzip" in enc or raw[:2] == b'\x1f\x8b':
+                    raw = gzip.decompress(raw)
+                elif "deflate" in enc:
+                    raw = zlib.decompress(raw)
+
+                # try UTF-8 decode + json parse
+                if isinstance(raw, bytes):
+                    raw = raw.decode("utf-8", errors="replace")
+
+                return json.loads(raw)
+            except Exception as second_err:
+                snippet = (raw[:200] if isinstance(raw, str) else repr(raw[:80]))
+                logger.error(
+                    "Failed to parse JSON response from %s (status=%s, encoding=%s). Snippet: %s",
+                    url, response.status_code, enc, snippet
+                )
+                raise ValueError(
+                    f"Invalid JSON response from API: {second_err or first_err}"
+                ) from second_err
     
     def _normalize_ohlcv(self, df: pd.DataFrame) -> pd.DataFrame:
         """

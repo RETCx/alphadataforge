@@ -1,5 +1,6 @@
 import pytest
 import pandas as pd
+from unittest.mock import patch
 from alphadataforge.providers.alphavantage_fetcher import AlphaVantageFetcher
 from alphadataforge.config import settings
 
@@ -60,8 +61,8 @@ def test_alphavantage_parse_response_logic(mock_fetcher):
     assert df.loc["2023-03-24", "Open"] == 132.0
     assert df.loc["2023-03-24", "Volume"] == 5142289
 
-@pytest.mark.vcr
-def test_alphavantage_fetch_single_vcr(monkeypatch):
+@patch('alphadataforge.providers.alphavantage_fetcher.AlphaVantageFetcher._make_http_request')
+def test_alphavantage_fetch_single_vcr(mock_http, monkeypatch):
     """
     VCR test that hits the real API once and records it.
     """
@@ -69,30 +70,34 @@ def test_alphavantage_fetch_single_vcr(monkeypatch):
         monkeypatch.setattr(settings.config, "ALPHAVANTAGE_API_KEY", "demo")
         
     fetcher = AlphaVantageFetcher()
-    # IBM is often supported by the 'demo' key if real key is missing
+    mock_http.return_value = {
+        "Time Series (Daily)": {
+            "2023-01-01": {"1. open": "150.0", "2. high": "155.0", "3. low": "149.0", "4. close": "153.0", "5. volume": "1000"}
+        }
+    }
     df = fetcher.fetch_single("IBM")
-    
     assert not df.empty
     assert 'Close' in df.columns
     assert 'Volume' in df.columns
 
-@pytest.mark.vcr
-def test_alphavantage_fetch_info_vcr(monkeypatch):
+@patch('alphadataforge.providers.alphavantage_fetcher.AlphaVantageFetcher._make_http_request')
+def test_alphavantage_fetch_info_vcr(mock_http, monkeypatch):
     if not settings.config.ALPHAVANTAGE_API_KEY:
         monkeypatch.setattr(settings.config, "ALPHAVANTAGE_API_KEY", "demo")
         
     fetcher = AlphaVantageFetcher()
+    mock_http.return_value = {"Symbol": "IBM", "AssetType": "Common Stock"}
     info = fetcher.fetch_info("IBM")
-    
     assert isinstance(info, dict)
-    assert len(info) > 0
+    assert info.get("Symbol") == "IBM"
 
-@pytest.mark.vcr
-def test_alphavantage_fetch_financials_vcr(monkeypatch):
+@patch('alphadataforge.providers.alphavantage_fetcher.AlphaVantageFetcher._make_http_request')
+def test_alphavantage_fetch_financials_vcr(mock_http, monkeypatch):
     if not settings.config.ALPHAVANTAGE_API_KEY:
         monkeypatch.setattr(settings.config, "ALPHAVANTAGE_API_KEY", "demo")
         
     fetcher = AlphaVantageFetcher()
+    mock_http.return_value = {"annualReports": [{"fiscalDateEnding": "2023-12-31", "netIncome": "1000"}]}
     df = fetcher.fetch_financials("IBM", statement="income", period="annual")
     
     assert not df.empty

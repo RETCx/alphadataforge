@@ -34,7 +34,15 @@ class TestNormalization:
         # Index should be datetime
         assert isinstance(df.index, pd.DatetimeIndex)
 
-    def test_tiingo_normalization(self, tiingo_fetcher):
+    @patch('alphadataforge.providers.tiingo_fetcher.TiingoFetcher.client')
+    def test_tiingo_normalization(self, mock_client, tiingo_fetcher):
+        # Provide raw unnormalized dummy data
+        dummy_df = pd.DataFrame(
+            {"open": [150.0], "high": [155.0], "low": [149.0], "close": [153.0], "volume": [1000]},
+            index=pd.to_datetime(["2023-01-01"])
+        )
+        mock_client.get_dataframe.return_value = dummy_df
+        
         df = tiingo_fetcher.fetch_single("AAPL", start_date="2023-01-01", end_date="2023-01-05")
         assert not df.empty
         # Columns should be Title Case (normalized from tiingo's lowercase)

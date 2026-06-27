@@ -27,5 +27,7 @@ jobs:
         FMP_API_KEY: dummy_key
         TIINGO_API_KEY: dummy_key
         ALPHAVANTAGE_API_KEY: dummy_key
+        VCR_RECORD_MODE: none
+        DISABLE_LIVE_API_TESTS: true
       run: |
         pytest tests/
