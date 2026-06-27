@@ -139,6 +139,29 @@ consensus_df = Price.consensus("AAPL", start_date="2023-01-01", method="median")
 print(consensus_df.head())
 ```
 
+#### Integrating Custom External Data (`custom_data`)
+You can inject your own external DataFrames (from a CSV, database, etc.) directly into the Consensus engine! 
+*Note: You must normalize your DataFrame's columns to the AlphaDataForge standard (`Open`, `High`, `Low`, `Close`, `Volume`) before passing it in.*
+
+```python
+import pandas as pd
+
+# Load and Normalize your data
+df_custom = pd.read_csv('my_database.csv')
+df_custom = df_custom.rename(columns={'Price': 'Close', 'Vol.': 'Volume'})
+df_custom['Date'] = pd.to_datetime(df_custom['Date'])
+df_custom.set_index('Date', inplace=True)
+
+# Inject custom data into compare or consensus!
+consensus_df = Price.consensus(
+    "AAPL", 
+    start_date="2026-06-01", 
+    providers=["yfinance", "alphavantage"], 
+    custom_data={"my_local_db": df_custom},
+    method="median"
+)
+```
+
 ---
 
 ## Module 2: Fundamentals

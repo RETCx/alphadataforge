@@ -104,11 +104,16 @@ class Price:
         start_date: Optional[str] = None, 
         end_date: Optional[str] = None,
         providers: Optional[List[str]] = None,
-        provider_params: Optional[Dict[str, Any]] = None
+        provider_params: Optional[Dict[str, Any]] = None,
+        custom_data: Optional[Dict[str, pd.DataFrame]] = None
     ) -> pd.DataFrame:
         """
         Fetch historical price data from multiple providers concurrently and combine them 
         into a single MultiIndex DataFrame for easy comparison.
+        
+        Args:
+            custom_data: Optional dictionary mapping provider names to custom pandas DataFrames.
+                         These will be merged alongside the API-fetched data.
         """
         if providers is None:
             providers = ["yfinance", "tiingo", "alphavantage", "fmp", "hybrid_av_tiingo"]
@@ -138,6 +143,13 @@ class Price:
                         df.index = df.index.tz_localize(None)
                     results[p] = df
 
+        if custom_data:
+            for p, df in custom_data.items():
+                if not df.empty:
+                    if df.index.tz is not None:
+                        df.index = df.index.tz_localize(None)
+                    results[p] = df
+
         if not results:
             return pd.DataFrame()
 
@@ -153,13 +165,14 @@ class Price:
         end_date: Optional[str] = None,
         providers: Optional[List[str]] = None,
         provider_params: Optional[Dict[str, Any]] = None,
+        custom_data: Optional[Dict[str, pd.DataFrame]] = None,
         method: Literal["mean", "median"] = "median"
     ) -> pd.DataFrame:
         """
         Fetch from multiple providers and return a single consensus DataFrame 
         by calculating the mean or median across all available providers.
         """
-        multi_df = Price.compare(symbol, start_date, end_date, providers, provider_params)
+        multi_df = Price.compare(symbol, start_date, end_date, providers, provider_params, custom_data)
         
         if multi_df.empty:
             return pd.DataFrame()

@@ -40,3 +40,5 @@ MANIFEST
 test.ipynb
 alphadataforge_cache.sqlite
 .coverage
+test_data/
+test_data/*
