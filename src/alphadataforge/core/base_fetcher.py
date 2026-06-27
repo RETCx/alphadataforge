@@ -4,6 +4,8 @@ from typing import Optional, List, Dict
 import random as rd
 import time
 from datetime import datetime
+import gzip
+import json
 
 import requests
 import requests_cache
@@ -117,8 +119,12 @@ class BaseDataFetcher(ABC):
 
         response.raise_for_status()
         try:
+            # Handle gzip-compressed responses
+            if response.content[:2] == b'\x1f\x8b':  # gzip magic bytes
+                content = gzip.decompress(response.content)
+                return json.loads(content)
             return response.json()
-        except ValueError as e:
+        except (ValueError, gzip.BadGzipFile) as e:
             logger.error("Failed to parse JSON response from %s. Snippet: %s", url, response.text[:200])
             raise ValueError(f"Invalid JSON response from API: {e}")
     
