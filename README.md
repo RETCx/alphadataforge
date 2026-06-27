@@ -95,7 +95,7 @@ df = Price.get("TSLA", provider="tiingo", start_date="2022-01-01")
 | `Adj Open` | float | Adjusted opening price (if `adjusted=True`) |
 | `Adj High` | float | Adjusted daily high (if `adjusted=True`) |
 | `Adj Low` | float | Adjusted daily low (if `adjusted=True`) |
-| `Adj Close` | float | Dividend & split adjusted close |
+| `Adj Close` | float | Dividend & split adjusted close (if available or `adjusted=True`) |
 | `Adj Volume` | float | Split-adjusted volume (if `adjusted=True`) |
 
 ---
@@ -425,10 +425,11 @@ df = Price.get("AAPL", provider="fmp", provider_params={"adjusted": True})
 
 | Method | `statement=` value | Free Tier | Notes |
 |---|---|---|---|
-| `get_info()` | — | Yes Works | Returns company profile: `sector`, `industry`, `mktCap`, `beta`, `description`, `ceo`, etc. |
-| `get_financials()` | `"income"` | No 403 Error | Requires FMP paid plan |
-| `get_financials()` | `"balance"` | No 403 Error | Requires FMP paid plan |
-| `get_financials()` | `"cashflow"` | No 403 Error | Requires FMP paid plan |
+| `get_info()` | — | ✅ Free | Returns company profile: `sector`, `industry`, `mktCap`, `beta`, `description`, `ceo`, etc. |
+| `get_financials()` | `"income"` | ✅ Free | 5 periods returned on free tier |
+| `get_financials()` | `"balance"` | ✅ Free | 5 periods returned on free tier |
+| `get_financials()` | `"cashflow"` | ✅ Free | 5 periods returned on free tier |
+| `get_financials()` | `"shares_float"` | ✅ Free | Returns `freeFloat`, `floatShares`, and `outstandingShares` snapshot |
 
 ```python
 from alphadataforge.data.fundamental import Fundamentals
@@ -483,3 +484,26 @@ print(info["ceo"])          # "Timothy D. Cook"
 - [x] Fundamentals Facade (Income, Balance, Cashflow, Earnings, Shares Outstanding)
 - [ ] Data Quality Checks (anomaly detection, missing data handling)
 - [ ] Technical Indicators Module (RSI, MACD, Bollinger Bands)
+
+---
+
+## Testing
+
+This project utilizes `pytest-vcr` and `unittest.mock` to ensure robust and comprehensive test coverage without consuming actual API rate limits. 
+
+### VCR Cassettes (`pytest-vcr`)
+VCR records real HTTP interactions and saves them as `.yaml` files (cassettes) within the `tests/cassettes/` directory.
+
+- **Rate Limit Protection**: By replaying recorded responses, our test suite can execute reliably in CI/CD environments (e.g., GitHub Actions) without exhausting API provider quotas.
+- **Security**: Sensitive query parameters, such as API keys, are automatically sanitized and replaced with placeholder strings (`DUMMY`) before being persisted to the cassettes.
+- **Version Control**: The `.yaml` cassette files **must be committed** to version control. They act as the definitive mock data for automated CI pipelines.
+
+### Generating New Cassettes
+When adding new tests or modifying existing API requests, you will need to generate new cassettes:
+1. Ensure your valid API keys are configured in the `.env` file.
+2. Execute `pytest` locally. If a cassette for a specific test does not exist, VCR will automatically perform a real HTTP request and record the sanitized response.
+3. Commit the newly generated `.yaml` files to Git.
+
+```bash
+pytest tests/
+```
