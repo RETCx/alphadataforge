@@ -4,6 +4,7 @@ import os
 from alphadataforge.providers.yfinance_fetcher import YFinanceFetcher
 from alphadataforge.providers.tiingo_fetcher import TiingoFetcher
 from alphadataforge.data.price import Price
+from alphadataforge.data.fundamental import Fundamentals
 from alphadataforge.config.settings import config
 
 @pytest.fixture
@@ -95,6 +96,19 @@ def test_fetch_financials_income(yf_fetcher):
     df = yf_fetcher.fetch_financials("AAPL", statement="income")
     assert isinstance(df, pd.DataFrame)
     assert not df.empty
+    # Check if normalization happened
+    assert 'Net_Income' in df.columns or 'Total_Revenue' in df.columns
+
+def test_fundamentals_facade():
+    """Test the unified Fundamentals Facade API."""
+    info = Fundamentals.get_info("AAPL", provider="yfinance")
+    assert isinstance(info, dict)
+    assert 'sector' in info
+    
+    df = Fundamentals.get_financials("AAPL", statement="balance", period="annual", provider="yfinance")
+    assert isinstance(df, pd.DataFrame)
+    assert not df.empty
+    assert df.index.name == "Date"
 
 def test_fetch_crypto(yf_fetcher):
     """Test fetching crypto price via yfinance (BTC-USD)."""
