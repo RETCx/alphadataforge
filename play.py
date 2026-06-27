@@ -84,7 +84,7 @@ def play_with_fetchers():
         
         print("\n[11] test Tiingo fetch_single (AAPL)")
         df_tiingo = tiingo.fetch_single("AAPL", start_date="2023-01-01", end_date="2023-01-05")
-        print(df_tiingo.head())
+        print(df_tiingo)
 
         print("\n[12] test Tiingo fetch_news (AAPL)")
         try:
@@ -152,9 +152,10 @@ def test_fundamentals():
     # Show standardized columns if available
     cols_to_show = [c for c in ['Net_Income', 'Total_Revenue', 'Operating_Income'] if c in df_income.columns]
     if cols_to_show:
-        print(df_income[cols_to_show].head(3))
+        print(df_income.columns)
+        print(df_income[cols_to_show])
     else:
-        print(df_income.iloc[:3, :3])
+        print(df_income)
 
 def test_financials_alphaVantage():
     print("\n" + "=" * 60)
@@ -188,10 +189,12 @@ def test_financials_alphaVantage_new_endpoints():
         raw = fetcher.fetch_fundamental(symbol, "SHARES_OUTSTANDING")
         print(raw.keys())
         df_shares = Fundamentals.get_financials(symbol, statement="shares_outstanding", period="quarterly", provider=provider)
+        print(df_shares.columns)
         print(df_shares)
 
         print("\nFetching earnings...")
         df_earnings = Fundamentals.get_financials(symbol, statement="earnings", period="quarterly", provider=provider)
+        print(df_earnings.columns)
         print(df_earnings)
 
         print("\nFetching earnings calendar...")
@@ -203,10 +206,34 @@ def test_financials_alphaVantage_new_endpoints():
         traceback.print_exc()
 
 
+def test_fmp_api():
+    print("\n" + "=" * 60)
+    print("Testing FMP API with new keys")
+    print("=" * 60)
+    
+    from alphadataforge.config.settings import config
+    if config.FMP_API_KEY:
+        try:
+            print("\n[1] Fetching AAPL info (FMP)...")
+            info = Fundamentals.get_info("AAPL", provider="fmp")
+            print(f"  - Sector: {info.get('sector')}")
+            print(f"  - Market Cap: {info.get('marketCap')}")
+            
+            print("\n[2] Fetching AAPL Income Statement (FMP)...")
+            df_income = Fundamentals.get_financials("AAPL", statement="income", period="annual", provider="fmp")
+            print(df_income.columns)
+            print(df_income)
+        except Exception as e:
+            print(f"FMP API Error: {e}")
+    else:
+        print("Skip FMP test because FMP_API_KEY not found in .env")
+
 if __name__ == "__main__":
     play_with_fetchers()
     test_performance()
     test_fundamentals()
+    test_financials_alphaVantage()
     test_financials_alphaVantage_new_endpoints()
+    test_fmp_api()
 
     
