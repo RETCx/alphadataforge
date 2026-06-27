@@ -1,5 +1,21 @@
 import pytest
+import requests_cache
 
+# 1. Disable requests_cache globally for all tests to prevent VCR conflicts
+requests_cache.uninstall_cache()
+
+# 2. VCRHTTPResponse missing _request_url compatibility patch (User requested fix)
+try:
+    from vcr.stubs import VCRHTTPResponse
+    @property
+    def _request_url_patch(self):
+        request_url = getattr(self, "url", None)
+        if request_url is None and hasattr(self, "request"):
+            request_url = getattr(self.request, "url", None)
+        return request_url
+    VCRHTTPResponse._request_url = _request_url_patch
+except ImportError:
+    pass
 @pytest.fixture(scope="module")
 def vcr_config():
     """
