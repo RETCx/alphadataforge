@@ -78,12 +78,28 @@ def test_price_unified_api_advanced():
     assert not df_advanced.empty
     assert 'Close' in df_advanced.columns
 
-def test_fetch_news(yf_fetcher):
-    """Test fetching news articles for a ticker."""
+@patch('alphadataforge.providers.yfinance_fetcher.yf.Ticker')
+def test_fetch_news(mock_ticker, yf_fetcher):
+    """Test news parsing and count without depending on Yahoo availability."""
+    mock_ticker.return_value.news = [
+        {"content": {"title": f"Article {i}", "pubDate": "2026-10-25T06:00:00Z"}}
+        for i in range(7)
+    ]
     df = yf_fetcher.fetch_news("AAPL", count=5)
     assert isinstance(df, pd.DataFrame)
-    assert not df.empty
-    assert 'title' in df.columns
+    assert df['title'].tolist() == [f"Article {i}" for i in range(5)]
+    assert (df['pubDate'] == pd.Timestamp("2026-10-25T06:00:00Z")).all()
+    mock_ticker.assert_called_once_with("AAPL")
+
+
+@pytest.mark.parametrize("articles", [[], None])
+@patch('alphadataforge.providers.yfinance_fetcher.yf.Ticker')
+def test_fetch_news_no_articles(mock_ticker, yf_fetcher, articles):
+    """An empty Yahoo response is a valid result."""
+    mock_ticker.return_value.news = articles
+    df = yf_fetcher.fetch_news("AAPL", count=5)
+    assert isinstance(df, pd.DataFrame)
+    assert df.empty
 
 def test_fetch_info(yf_fetcher):
     """Test fetching ticker metadata and fundamental info dict."""
