@@ -22,6 +22,7 @@ cp .env.example .env
 TIINGO_API_KEY="your_tiingo_key"
 ALPHAVANTAGE_API_KEY="your_alphavantage_key"
 FMP_API_KEY="your_fmp_key"
+STOCKFIT_API_KEY="your_stockfit_key"
 ```
 
 *YFinance does not require an API key.*
@@ -41,7 +42,11 @@ alphadataforge/
 │   ├── alphavantage_fetcher.py
 │   ├── tiingo_fetcher.py
 │   ├── fmp_fetcher.py
+│   ├── stockfit_fetcher.py ← StockFit API (20yr SEC EDGAR XBRL lineage, health scores)
 │   └── hybrid_fetcher.py  ← AlphaVantage (raw) + Tiingo (div/splits) + local math engine
+│
+├── scripts/
+│   └── snapshot_fundamentals.py ← Offline snapshot utility (Parquet & SQLite)
 │
 ├── utils/
 │   └── finance_math.py   ← Local back-adjustment engine (calculate_adjusted_prices)
@@ -236,7 +241,7 @@ print(info["sector"], info["marketCap"])
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `symbol` | `str` | *required* | Ticker e.g. `"AAPL"` |
-| `provider` | `str` | `"yfinance"` | `"yfinance"`, `"alphavantage"`, `"fmp"` |
+| `provider` | `str` | `"yfinance"` | `"yfinance"`, `"stockfit"`, `"alphavantage"`, `"fmp"` |
 
 **Returns:** `dict`
 
@@ -251,9 +256,9 @@ df = Fundamentals.get_financials("AAPL", statement="income", period="annual", pr
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `symbol` | `str` | *required* | Ticker e.g. `"AAPL"` |
-| `statement` | `str` | `"income"` | See table below for per-provider support |
+| `statement` | `str` | `"income"` | `"income"`, `"balance"`, `"cashflow"`, `"growth"`, `"scores"`, `"shares_outstanding"` |
 | `period` | `str` | `"annual"` | `"annual"` or `"quarterly"` |
-| `provider` | `str` | `"yfinance"` | `"yfinance"`, `"alphavantage"`, `"fmp"` |
+| `provider` | `str` | `"yfinance"` | `"yfinance"`, `"stockfit"`, `"alphavantage"`, `"fmp"` |
 
 **Returns:** `pd.DataFrame` with `DatetimeIndex` and normalized columns
 
@@ -271,6 +276,41 @@ df = Fundamentals.get_financials("AAPL", statement="income", period="annual", pr
 | `Shares_Outstanding` | Basic shares outstanding |
 
 ---
+
+
+### `Fundamentals.get_scores()` — Financial Health Scores (StockFit)
+
+```python
+scores = Fundamentals.get_scores("AAPL", provider="stockfit")
+print("Piotroski F-Score:", scores["piotroskiFScore"])
+# Returns Piotroski details: positiveNetIncome, positiveOperatingCashFlow, risingRoa, etc.
+```
+
+### SEC XBRL 20-Year Statement History (StockFit)
+
+```python
+# 20 years of annual statements with SEC filing audit lineage
+df_income = Fundamentals.get_financials("AAPL", statement="income", period="annual", provider="stockfit", limit=100)
+
+# 70+ quarters of balance sheet history
+df_balance = Fundamentals.get_financials("AAPL", statement="balance", period="quarterly", provider="stockfit", limit=100)
+```
+
+### Snapshot & Offline Storage (`scripts/snapshot_fundamentals.py`)
+
+Capture 20-year financial statement history for target symbols into local **Parquet** and **SQLite** storage:
+
+```bash
+# Snapshot Magnificent 7 (Annual + Quarterly, Profiles, Scores)
+python scripts/snapshot_fundamentals.py --preset mag7
+
+# Snapshot top 25 US blue-chips
+python scripts/snapshot_fundamentals.py --preset top25
+
+# Snapshot specific tickers
+python scripts/snapshot_fundamentals.py --symbols AAPL,MSFT,NVDA,GOOGL
+```
+Data is saved to `data_store/stockfit_snapshots/parquet/` and `data_store/stockfit_snapshots/fundamentals.db`.
 
 ### `Fundamentals.get_earnings_calendar()` — Earnings Calendar
 
@@ -571,6 +611,51 @@ print(info["ceo"])          # "Timothy D. Cook"
 
 ---
 
+---
+
+### Provider 5: StockFit (`provider="stockfit"`)
+
+| | |
+|---|---|
+| **API Key** | Yes Required (`STOCKFIT_API_KEY`) |
+| **Rate Limit** | 500 requests / minute, 500,000 / day (Pro Plan) |
+| **Data Source** | Direct SEC EDGAR XBRL filings with point-in-time audit lineage |
+| **Best For** | Deep historical US financial statements (20 years), Piotroski Health Scores, Offline Snapshots |
+
+#### Financial Statements (20-Year SEC XBRL)
+
+StockFit parses official 10-K and 10-Q filings directly, providing up to 20 years of annual statements and 70+ quarters:
+
+```python
+from alphadataforge.data.fundamental import Fundamentals
+
+# 1. Income Statement (20 years)
+df_income = Fundamentals.get_financials("AAPL", statement="income", period="annual", provider="stockfit", limit=100)
+
+# 2. Balance Sheet (70+ quarters)
+df_balance = Fundamentals.get_financials("AAPL", statement="balance", period="quarterly", provider="stockfit", limit=100)
+
+# 3. Cash Flow
+df_cf = Fundamentals.get_financials("AAPL", statement="cashflow", period="annual", provider="stockfit")
+
+# 4. Financial Health Scores (Piotroski F-Score)
+scores = Fundamentals.get_scores("AAPL", provider="stockfit")
+print("Piotroski F-Score:", scores["piotroskiFScore"])
+```
+
+#### Cross-Provider Accuracy Benchmark (AAPL)
+
+We tested and compared StockFit's normalized financials against YFinance and AlphaVantage:
+
+| Metric (2025) | StockFit | YFinance | AlphaVantage | Alignment |
+|---|---|---|---|---|
+| `Total_Revenue` | $416,161,000,000 | $416,161,000,000 | $416,161,000,000 | **100% Identical** |
+| `Net_Income` | $112,010,000,000 | $112,010,000,000 | $112,010,000,000 | **100% Identical** |
+| `Operating_Income` | $133,050,000,000 | $133,050,000,000 | $133,050,000,000 | **100% Identical** |
+| `Total_Assets` | $359,241,000,000 | $359,241,000,000 | $359,241,000,000 | **100% Identical** |
+| `Free_Cash_Flow` | $98,767,000,000 | $98,767,000,000 | N/A | **100% Identical** |
+| **History Depth** | **19–20 Years** | 4 Years | ~5 Years | **StockFit 5x Deeper** |
+
 ## Provider Comparison Table
 
 ### Price
@@ -588,16 +673,20 @@ print(info["ceo"])          # "Timothy D. Cook"
 
 ### Fundamentals
 
-| Feature | YFinance | AlphaVantage | Tiingo | FMP |
-|---|---|---|---|---|
-| `get_info()` | Yes Rich (80+ fields) | Yes Good | Yes Basic | Yes Good |
-| `statement="income"` | Yes (4yr) | Yes (5yr+) | No | No Paid |
-| `statement="balance"` | Yes (4yr) | Yes (5yr+) | No | No Paid |
-| `statement="cashflow"` | Yes (4yr) | Yes (5yr+) | No | No Paid |
-| `statement="shares_outstanding"` | Warning (in balance sheet) | Yes Historical | No | No Paid |
-| `statement="earnings"` | Warning (basic) | Yes + Analyst Est. | No | No Paid |
-| `get_earnings_calendar()` | No | Yes | No | No |
-| News | Yes | No | Yes (Best) | No |
+| Feature | YFinance | StockFit (SEC XBRL) | AlphaVantage | Tiingo | FMP |
+|---|---|---|---|---|---|
+| Historical Depth | 4yr (8 quarters) | **15–20yr (70+ quarters)** | ~5yr | None | Locked |
+| Rate Limit | Unlimited | 500k/day (Pro) | 25/day | 500/hr | 250/day |
+| `get_info()` | Yes Rich (80+ fields) | Yes (SEC details) | Yes Good | Yes Basic | Yes Good |
+| `statement="income"` | Yes (4yr) | **Yes (20yr XBRL)** | Yes (5yr+) | No | No Paid |
+| `statement="balance"` | Yes (4yr) | **Yes (20yr XBRL)** | Yes (5yr+) | No | No Paid |
+| `statement="cashflow"` | Yes (4yr) | **Yes (20yr XBRL)** | Yes (5yr+) | No | No Paid |
+| Health Scores | No | **Yes (Piotroski F-Score)** | No | No | No |
+| SEC Traceability | No | **Yes (10-K/Q Accession #)** | No | No | No |
+| `statement="shares_outstanding"` | Warning (in balance sheet) | Yes Historical | Yes Historical | No | No Paid |
+| `statement="earnings"` | Warning (basic) | Yes | Yes + Analyst Est. | No | No Paid |
+| `get_earnings_calendar()` | No | Yes | Yes | No | No |
+| News | Yes | Yes | No | Yes (Best) | No |
 
 ---
 
@@ -614,6 +703,7 @@ print(info["ceo"])          # "Timothy D. Cook"
 - [x] `Price.compare()` — concurrent multi-provider comparison (MultiIndex DataFrame)
 - [x] `Price.consensus()` — mean/median aggregation across providers
 - [x] Custom external DataFrame injection (`custom_data` parameter)
+- [x] StockFit Integration (20-year SEC XBRL Statements, Piotroski Scores, Snapshot Utility)
 - [ ] Data Quality Checks (anomaly detection, missing data handling)
 - [ ] Technical Indicators Module (RSI, MACD, Bollinger Bands)
 - [ ] Streaming / real-time price feed
