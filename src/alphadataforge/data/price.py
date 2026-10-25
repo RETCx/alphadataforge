@@ -10,6 +10,7 @@ from ..providers.tiingo_fetcher import TiingoFetcher
 from ..providers.alphavantage_fetcher import AlphaVantageFetcher
 from ..providers.fmp_fetcher import FMPFetcher
 from ..providers.hybrid_fetcher import HybridFetcher
+from ..providers.stockfit_fetcher import StockFitFetcher
 
 class Price:
     """
@@ -22,7 +23,7 @@ class Price:
         symbols: Union[str, List[str]], 
         start_date: Optional[str] = None, 
         end_date: Optional[str] = None,
-        provider: Literal["yfinance", "tiingo", "alphavantage", "fmp", "hybrid_av_tiingo"] = "yfinance",
+        provider: Literal["yfinance", "tiingo", "alphavantage", "fmp", "hybrid_av_tiingo", "stockfit"] = "yfinance",
         provider_params: Optional[Dict[str, Any]] = None
     ) -> Union[pd.DataFrame, Dict[str, pd.DataFrame]]:
         """
@@ -35,7 +36,7 @@ class Price:
                 Start date in 'YYYY-MM-DD' format. Defaults to None.
             end_date (Optional[str], optional): 
                 End date in 'YYYY-MM-DD' format. Defaults to None.
-            provider (Literal["yfinance", "tiingo", "alphavantage", "fmp"], optional): 
+            provider (Literal["yfinance", "tiingo", "alphavantage", "fmp", "hybrid_av_tiingo", "stockfit"], optional): 
                 The data provider to use. Defaults to "yfinance".
             provider_params (Optional[Dict[str, Any]], optional): 
                 Additional parameters passed directly to the specific provider's fetcher.
@@ -58,6 +59,9 @@ class Price:
                 *   **fmp:**
                     *   `outputsize` (str): "full" (all history).
                 
+                *   **stockfit:**
+                    *   `resolution` (str): "1d", "1wk", "1mo".
+                
         Returns:
             Union[pd.DataFrame, Dict[str, pd.DataFrame]]: 
                 - If `symbols` is a single string, returns a pandas DataFrame.
@@ -70,6 +74,9 @@ class Price:
             >>> 
             >>> # 2. Using FMP with adjusted prices
             >>> df_fmp = Price.get("MSFT", provider="fmp", provider_params={"adjusted": True})
+            >>> 
+            >>> # 3. Using StockFit
+            >>> df_stockfit = Price.get("NVDA", provider="stockfit", start_date="2023-01-01")
         """
         
         # Prevent error if no params are passed
@@ -86,8 +93,10 @@ class Price:
             fetcher = FMPFetcher()
         elif provider == "hybrid_av_tiingo":
             fetcher = HybridFetcher()
+        elif provider == "stockfit":
+            fetcher = StockFitFetcher()
         else:
-            raise ValueError(f"Unsupported provider: '{provider}'. Choose 'yfinance', 'tiingo', 'alphavantage', 'fmp', or 'hybrid_av_tiingo'.")
+            raise ValueError(f"Unsupported provider: '{provider}'. Choose 'yfinance', 'tiingo', 'alphavantage', 'fmp', 'hybrid_av_tiingo', or 'stockfit'.")
             
         # 2. fetch price data (check whether list or string)
         if isinstance(symbols, list):
