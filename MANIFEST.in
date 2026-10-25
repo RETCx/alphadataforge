@@ -1,0 +1,10 @@
+include README.md
+include pyproject.toml
+recursive-include src/alphadataforge *.py
+prune tests
+prune test_data
+prune data_store
+prune .github
+exclude .env
+global-exclude *.py[cod]
+global-exclude __pycache__

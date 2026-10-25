@@ -6,11 +6,21 @@ AlphaDataForge is a modular data fetching pipeline for quantitative trading and 
 
 ## Quick Start
 
+Install from [PyPI](https://pypi.org/project/alphadataforge/):
+
+```bash
+python -m pip install alphadataforge
+```
+
+For development:
+
 ```bash
 git clone https://github.com/RETCx/alphadataforge.git
 cd alphadataforge
 pip install -e .
 ```
+
+Maintainers: see [PUBLISHING.md](PUBLISHING.md) for release instructions.
 
 Copy the environment template and add your API keys:
 ```bash

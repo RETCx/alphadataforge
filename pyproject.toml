@@ -27,7 +27,14 @@ dev = [
     "pytest-cov",
     "pytest-vcr"
 ]
+publish = ["build", "twine"]
 
 [project.urls]
 "Homepage" = "https://github.com/RETCx/alphadataforge"
+"Issues" = "https://github.com/RETCx/alphadataforge/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["alphadataforge*"]
+namespaces = true
 
