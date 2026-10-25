@@ -34,3 +34,19 @@ class Endpoints:
 
     class Tiingo:
         BASE_URL = "https://api.tiingo.com/tiingo/daily"
+
+    class StockFit:
+        BASE_URL = "https://api.stockfit.io/v1/api"
+        PATHS = {
+            "income": "financials/income-statement",
+            "balance": "financials/balance-sheet",
+            "cashflow": "financials/cash-flow-statement",
+            "growth": "financials/growth",
+            "scores": "financials/scores",
+            "key_metrics": "financials/key-metrics",
+            "as_reported": "financials/as-reported",
+            "details": "company/details",
+            "research_summary": "company/research-summary",
+            "price_history": "price/history",
+            "quote": "price/quote"
+        }

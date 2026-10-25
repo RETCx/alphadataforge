@@ -42,3 +42,7 @@ alphadataforge_cache.sqlite
 .coverage
 test_data/
 test_data/*
+
+data_store/
+*.parquet
+*.db

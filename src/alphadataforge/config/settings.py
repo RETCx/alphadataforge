@@ -13,5 +13,6 @@ class Settings:
     TIINGO_API_KEY: Optional[str] = os.getenv("TIINGO_API_KEY")
     ALPHAVANTAGE_API_KEY: Optional[str] = os.getenv("ALPHAVANTAGE_API_KEY")
     FMP_API_KEY: Optional[str] = os.getenv("FMP_API_KEY")
+    STOCKFIT_API_KEY: Optional[str] = os.getenv("STOCKFIT_API_KEY")
 
 config = Settings()

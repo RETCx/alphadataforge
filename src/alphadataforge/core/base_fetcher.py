@@ -239,6 +239,7 @@ class BaseDataFetcher(ABC):
             
             # Total Equity
             'totalStockholdersEquity': 'Total_Equity',
+            'stockholdersEquity': 'Total_Equity',
             'Total Stockholder Equity': 'Total_Equity',
             'Stockholders Equity': 'Total_Equity',
             'totalEquity': 'Total_Equity',
@@ -248,6 +249,7 @@ class BaseDataFetcher(ABC):
             # Shares Outstanding
             'sharesOutstanding': 'Shares_Outstanding',
             'commonStockSharesOutstanding': 'Shares_Outstanding',
+            'weightedAverageSharesOutstanding': 'Shares_Outstanding',
             'Basic Average Shares': 'Shares_Outstanding',
             'shares_outstanding': 'Shares_Outstanding',
             'shares_outstanding_basic': 'Shares_Outstanding',
@@ -273,16 +275,22 @@ class BaseDataFetcher(ABC):
             'totalAssets': 'Total_Assets',
             'Total Assets': 'Total_Assets',
             'total_assets': 'Total_Assets',
+            'assets': 'Total_Assets',
             
             # Total Liabilities
             'totalLiabilities': 'Total_Liabilities',
             'Total Liabilities': 'Total_Liabilities',
             'Total Liabilities Net Minority Interest': 'Total_Liabilities',
-            'total_liabilities': 'Total_Liabilities'
+            'total_liabilities': 'Total_Liabilities',
+            'liabilities': 'Total_Liabilities'
         }
         
         # Rename columns if they exist in mapping
         df = df.rename(columns=col_mapping)
+        
+        # Deduplicate columns if multiple raw metrics mapped to the same standard column
+        if df.columns.duplicated().any():
+            df = df.loc[:, ~df.columns.duplicated(keep='first')]
         
         # Ensure index is datetime and named 'Date'
         if not isinstance(df.index, pd.DatetimeIndex):
