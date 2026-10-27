@@ -91,7 +91,7 @@ class AlphaVantageFetcher(BaseDataFetcher):
             '5. adjusted close': 'adjClose',
             '6. volume': 'volume',  # Adjusted daily uses 6 for volume
         }
-        df.rename(columns=rename_map, inplace=True)
+        df = df.rename(columns=rename_map)
         
         # Convert types from string to float
         for col in df.columns:

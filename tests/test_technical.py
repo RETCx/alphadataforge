@@ -163,7 +163,7 @@ def test_cross_sectional_momentum_dict_and_long(sample_ohlcv):
     long_df = pd.concat(long_rows, ignore_index=True)
 
     cs_from_long = TechnicalIndicators.cross_sectional_momentum(long_df, lookback=126, skip_recent=21)
-    assert np.allclose(
+    pd.testing.assert_series_equal(
         cs_from_long.loc[last_date, "Momentum_Return"],
         snap["Momentum_Return"],
     )

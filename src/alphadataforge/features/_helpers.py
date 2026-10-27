@@ -65,7 +65,8 @@ def to_wide_prices(
             series_dict[sym] = s
         if not series_dict:
             return pd.DataFrame()
-        return pd.DataFrame(series_dict)
+        df_wide = pd.DataFrame(series_dict)
+        return df_wide.reindex(columns=sorted(df_wide.columns))
 
     if isinstance(universe_data, pd.DataFrame):
         if universe_data.empty:
@@ -91,7 +92,7 @@ def to_wide_prices(
                 )
             if isinstance(wide.index, pd.DatetimeIndex) and wide.index.tz is not None:
                 wide.index = wide.index.tz_localize(None)
-            return wide
+            return wide.reindex(columns=sorted(wide.columns))
 
         # Already wide (index = Date, columns = symbols)
         wide = universe_data.copy()
@@ -99,6 +100,6 @@ def to_wide_prices(
             wide.index = pd.to_datetime(wide.index)
         if wide.index.tz is not None:
             wide.index = wide.index.tz_localize(None)
-        return wide
+        return wide.reindex(columns=sorted(wide.columns))
 
     raise TypeError("universe_data must be a Dict[str, pd.DataFrame] or a pandas DataFrame.")

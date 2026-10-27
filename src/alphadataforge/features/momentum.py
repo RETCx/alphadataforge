@@ -131,4 +131,4 @@ def compute_cross_sectional_momentum(
         "CS_Decile": cs_decile.stack(),
     })
     result.index.names = ["Date", "symbol"]
-    return result.dropna(subset=["Momentum_Return"])
+    return result.dropna(subset=["Momentum_Return"]).sort_index()
