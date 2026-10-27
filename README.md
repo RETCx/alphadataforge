@@ -608,10 +608,10 @@ df = Price.get("AAPL", provider="fmp", provider_params={"adjusted": True})
 | Method | `statement=` value | Free Tier | Notes |
 |---|---|---|---|
 | `get_info()` | — | ✅ Free | Returns company profile: `sector`, `industry`, `mktCap`, `beta`, `description`, `ceo`, etc. |
-| `get_financials()` | `"income"` | ✅ Free | 5 periods returned on free tier |
-| `get_financials()` | `"balance"` | ✅ Free | 5 periods returned on free tier |
-| `get_financials()` | `"cashflow"` | ✅ Free | 5 periods returned on free tier |
 | `get_financials()` | `"shares_float"` | ✅ Free | Returns `freeFloat`, `floatShares`, and `outstandingShares` snapshot |
+| `get_financials()` | `"income"` | ❌ Paid Only | Requires FMP paid plan (raises `403 Forbidden` on free API keys) |
+| `get_financials()` | `"balance"` | ❌ Paid Only | Requires FMP paid plan (raises `403 Forbidden` on free API keys) |
+| `get_financials()` | `"cashflow"` | ❌ Paid Only | Requires FMP paid plan (raises `403 Forbidden` on free API keys) |
 
 ```python
 from alphadataforge.data.fundamental import Fundamentals
@@ -760,23 +760,20 @@ cs_mom = TechnicalIndicators.cross_sectional_momentum(
 
 ## Testing
 
-This project utilizes `pytest-vcr` and `unittest.mock` to ensure robust and comprehensive test coverage without consuming actual API rate limits. 
+This project utilizes `unittest.mock` and `pytest` fixtures to ensure fast, deterministic, and 100% offline test coverage without requiring live API keys or exhausting provider rate limits.
 
-### VCR Cassettes (`pytest-vcr`)
-VCR records real HTTP interactions and saves them as `.yaml` files (cassettes) within the `tests/cassettes/` directory.
-
-- **Rate Limit Protection**: By replaying recorded responses, our test suite can execute reliably in CI/CD environments (e.g., GitHub Actions) without exhausting API provider quotas.
-- **Security**: Sensitive query parameters, such as API keys, are automatically sanitized and replaced with placeholder strings (`DUMMY`) before being persisted to the cassettes.
-- **Version Control**: The `.yaml` cassette files **must be committed** to version control. They act as the definitive mock data for automated CI pipelines.
-
-### Generating New Cassettes
-When adding new tests or modifying existing API requests, you will need to generate new cassettes:
-1. Ensure your valid API keys are configured in the `.env` file.
-2. Execute `pytest` locally. If a cassette for a specific test does not exist, VCR will automatically perform a real HTTP request and record the sanitized response.
-3. Commit the newly generated `.yaml` files to Git.
+### Offline Testing Architecture
+- **Zero API Quota Consumption**: Network calls (`_make_http_request`, `_make_request`, and vendor SDK calls) are mocked at the adapter layer using `unittest.mock.patch` and synthetic fixtures.
+- **CI/CD Reliability**: The entire test suite (86+ tests) executes completely offline within seconds in GitHub Actions workflows without needing secrets or external connectivity.
+- **Provider Normalization Testing**: Responses from Alpha Vantage, FMP, Tiingo, YFinance, and StockFit are validated against standard normalized schemas (`Open`, `High`, `Low`, `Close`, `Volume`, `Adj Close` and normalized financial statement line items).
 
 ### Running Tests & Checking Coverage
-To run the test suite and see a detailed coverage report for all fetchers:
+To run the full test suite:
+```bash
+pytest
+```
+
+To run with coverage reporting:
 ```bash
 pytest --cov=src/alphadataforge --cov-report=term-missing
 ```
