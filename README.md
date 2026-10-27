@@ -47,6 +47,12 @@ alphadataforge/
 │   ├── price.py          ← Unified Price Facade (Price.get(), Price.compare(), Price.consensus())
 │   └── fundamental.py    ← Unified Fundamental Facade (Fundamentals.get_info(), etc.)
 │
+├── features/
+│   ├── oscillators.py    ← RSI (Wilder/EMA/SMA) & MACD
+│   ├── volatility.py     ← Bollinger Bands, ATR/NATR, Rolling Volatility (Close, Parkinson, Garman-Klass)
+│   ├── momentum.py       ← Time-Series Momentum & Cross-Sectional Momentum Engine
+│   └── technical.py      ← Unified Facade (TechnicalIndicators / Features)
+│
 ├── providers/
 │   ├── yfinance_fetcher.py
 │   ├── alphavantage_fetcher.py
@@ -700,6 +706,38 @@ We tested and compared StockFit's normalized financials against YFinance and Alp
 
 ---
 
+## Module 3: Technical Indicators & Quantitative Momentum (`TechnicalIndicators`)
+
+**Entry point:** `from alphadataforge.features import TechnicalIndicators`
+
+```python
+from alphadataforge.data.price import Price
+from alphadataforge.features import TechnicalIndicators
+
+# 1. Single-ticker full indicator suite (RSI, MACD, Bollinger Bands, ATR, Volatility, Momentum)
+df = Price.get("AAPL", start_date="2024-01-01", provider_params={"adjusted": True})
+df_enriched = TechnicalIndicators.add_all(df)
+
+# Or call individual indicators with custom parameters:
+df = TechnicalIndicators.rsi(df, window=14, method="wilder")
+df = TechnicalIndicators.macd(df, fast=12, slow=26, signal=9)
+df = TechnicalIndicators.bollinger_bands(df, window=20, num_std=2.0)
+df = TechnicalIndicators.atr(df, window=14, include_natr=True)
+df = TechnicalIndicators.rolling_volatility(df, windows=[20, 60], estimator="garman_klass")
+df = TechnicalIndicators.momentum(df, windows=[21, 63, 126, 252], include_12_1=True)
+
+# 2. Cross-Sectional Momentum across a multi-asset universe
+universe = Price.get(["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META"], start_date="2024-01-01")
+cs_mom = TechnicalIndicators.cross_sectional_momentum(
+    universe,
+    lookback=252,       # 12-month lookback
+    skip_recent=21,     # Skip most recent 1-month short-term reversal (12-1M momentum)
+    risk_adjusted=True  # Volatility-scaled (Sharpe) momentum ranking
+)
+```
+
+---
+
 ## Roadmap
 
 - [x] SQLite Caching (24h TTL, OS temp folder)
@@ -714,8 +752,8 @@ We tested and compared StockFit's normalized financials against YFinance and Alp
 - [x] `Price.consensus()` — mean/median aggregation across providers
 - [x] Custom external DataFrame injection (`custom_data` parameter)
 - [x] StockFit Integration (20-year SEC XBRL Statements, Piotroski Scores, Snapshot Utility)
+- [x] Technical Indicators Module (RSI, MACD, Bollinger Bands, ATR, Rolling Volatility, Cross-Sectional Momentum)
 - [ ] Data Quality Checks (anomaly detection, missing data handling)
-- [ ] Technical Indicators Module (RSI, MACD, Bollinger Bands)
 - [ ] Streaming / real-time price feed
 
 ---
