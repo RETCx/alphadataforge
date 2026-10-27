@@ -3,7 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
-.pytest_cache/
+
 # Environments
 .env
 .venv
@@ -37,12 +37,19 @@ MANIFEST
 .idea/
 *.swp
 
+# Local notebooks, coverage & caches
 test.ipynb
 alphadataforge_cache.sqlite
 .coverage
 test_data/
 test_data/*
 
+# Local offline data store & databases
 data_store/
 *.parquet
 *.db
+
+# Private extraction scripts & scratchpad (keep only snapshot_fundamentals.py tracked)
+scripts/*
+!scripts/snapshot_fundamentals.py
+scratch/

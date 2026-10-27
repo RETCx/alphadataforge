@@ -4,6 +4,9 @@ recursive-include src/alphadataforge *.py
 prune tests
 prune test_data
 prune data_store
+prune examples
+prune scripts
+prune scratch
 prune .github
 exclude .env
 global-exclude *.py[cod]
