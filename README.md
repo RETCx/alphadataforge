@@ -61,9 +61,6 @@ alphadataforge/
 │   ├── stockfit_fetcher.py ← StockFit API (20yr SEC EDGAR XBRL lineage, health scores)
 │   └── hybrid_fetcher.py  ← AlphaVantage (raw) + Tiingo (div/splits) + local math engine
 │
-├── scripts/
-│   └── snapshot_fundamentals.py ← Offline snapshot utility (Parquet & SQLite)
-│
 ├── utils/
 │   └── finance_math.py   ← Local back-adjustment engine (calculate_adjusted_prices)
 │
@@ -310,23 +307,10 @@ df_income = Fundamentals.get_financials("AAPL", statement="income", period="annu
 
 # 70+ quarters of balance sheet history
 df_balance = Fundamentals.get_financials("AAPL", statement="balance", period="quarterly", provider="stockfit", limit=100)
+
+# Easily persist offline to Parquet or SQLite
+df_income.to_parquet("AAPL_income_20yr.parquet")
 ```
-
-### Snapshot & Offline Storage (`scripts/snapshot_fundamentals.py`)
-
-Capture 20-year financial statement history for target symbols into local **Parquet** and **SQLite** storage:
-
-```bash
-# Snapshot Magnificent 7 (Annual + Quarterly, Profiles, Scores)
-python scripts/snapshot_fundamentals.py --preset mag7
-
-# Snapshot top 25 US blue-chips
-python scripts/snapshot_fundamentals.py --preset top25
-
-# Snapshot specific tickers
-python scripts/snapshot_fundamentals.py --symbols AAPL,MSFT,NVDA,GOOGL
-```
-Data is saved to `data_store/stockfit_snapshots/parquet/` and `data_store/stockfit_snapshots/fundamentals.db`.
 
 ### `Fundamentals.get_earnings_calendar()` — Earnings Calendar
 

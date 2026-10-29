@@ -46,10 +46,11 @@ test_data/*
 
 # Local offline data store & databases
 data_store/
+outputs/
 *.parquet
 *.db
+*.sqlite
 
-# Private extraction scripts & scratchpad (keep only snapshot_fundamentals.py tracked)
-scripts/*
-!scripts/snapshot_fundamentals.py
+# Private extraction scripts & scratchpad
+scripts/
 scratch/
